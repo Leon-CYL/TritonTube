@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package tritontube;
+
+option go_package = "internal/proto;proto";
+
+service VideoContentStorageService {
+    rpc WriteFile(WriteRequest) returns (WriteResponse);
+    rpc ReadFile(ReadRequest) returns (ReadResponse);
+    rpc ListFile(ListRequest) returns (ListResponse);
+    rpc SendFile(SendRequest) returns (SendResponse);
+    rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+}
+
+message WriteRequest {
+    bytes data = 1;
+    string videoId = 2;
+    string filename = 3;
+}
+
+message WriteResponse {
+    bool success = 1;
+}
+
+message ReadRequest {
+    string videoId = 1;
+    string filename = 2;
+}
+
+message ReadResponse {
+    bool success = 1;
+    bytes data = 2;
+}
+
+message SendRequest {
+    string peerAddr = 1;
+    string videoId = 2;
+    string filename = 3;
+    bytes data = 4;
+}
+
+message SendResponse {
+    bool success = 1;
+}
+
+message ListRequest {}
+
+message ListResponse {
+    repeated string videoIds = 1;
+    repeated string filenames = 2;
+    bool success = 3;
+}
+
+message ShutdownRequest {}
+
+message ShutdownResponse {
+  bool success = 1;
+}
