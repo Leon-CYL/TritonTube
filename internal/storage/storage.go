@@ -30,7 +30,12 @@ func NewStorageServer(base string, server *grpc.Server) *StorageServer {
 		return nil
 	}
 
-	return &StorageServer{basePath: base, videoids: make([]string, 0), filenames: make([]string, 0), grpcServer: server}
+	return &StorageServer{
+		basePath: base, 
+		videoids: make([]string, 0), 
+		filenames: make([]string, 0), 
+		grpcServer: server,
+	}
 }
 
 func (ss *StorageServer) WriteFile(ctx context.Context, req *proto.WriteRequest) (*proto.WriteResponse, error) {
@@ -105,7 +110,7 @@ func (ss *StorageServer) ListFile(ctx context.Context, req *proto.ListRequest) (
 }
 
 func (ss *StorageServer) SendFile(ctx context.Context, req *proto.SendRequest) (*proto.SendResponse, error) {
-	conn, err := grpc.Dial(req.PeerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(req.PeerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	fmt.Printf("Node receiving files: %v\n", req.PeerAddr)
 	if err != nil {
 		log.Printf("Failed to connect to server: %v", err)

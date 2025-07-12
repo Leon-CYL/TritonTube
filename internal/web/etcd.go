@@ -5,7 +5,6 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -16,7 +15,6 @@ type EtcdVideoMetadataService struct {
 	etcdClient *clientv3.Client
 }
 
-// Uncomment the following line to ensure EtcdVideoMetadataService implements VideoMetadataService
 var _ VideoMetadataService = (*EtcdVideoMetadataService)(nil)
 
 func NewEtcdVideoMetadataService(nodes []string) (*EtcdVideoMetadataService, error) {
@@ -40,14 +38,15 @@ func (es *EtcdVideoMetadataService) Read(videoId string) (*VideoMetadata, error)
 	defer cancel()
 	res, err := es.etcdClient.Get(ctx, videoId)
 
+
 	if err != nil {
 		fmt.Printf("Read Error: %v\n", err)
 		return nil, err
 	}
 
 	if len(res.Kvs) == 0 {
-		fmt.Printf("Key is not found: %v\n", videoId)
-		return nil, errors.New("Key is not found.")
+		fmt.Printf("etcd: Key is not found: %v\n", videoId)
+		return nil, nil
 	}
 
 	var metadata VideoMetadata
@@ -62,8 +61,17 @@ func (es *EtcdVideoMetadataService) Read(videoId string) (*VideoMetadata, error)
 func (es *EtcdVideoMetadataService) Create(videoId string, uploadedAt time.Time) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, err := es.etcdClient.Put(ctx, videoId, uploadedAt.String())
 
+	metadata := VideoMetadata{
+		Id:         videoId,
+		UploadedAt: uploadedAt,
+	}
+	value, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	_, err = es.etcdClient.Put(ctx, videoId, string(value))
 	if err != nil {
 		fmt.Printf("Create Error: %v\n", err)
 		return err
@@ -79,13 +87,14 @@ func (es *EtcdVideoMetadataService) List() ([]VideoMetadata, error) {
 
 	if err != nil {
 		fmt.Printf("Create Error: %v\n", err)
+		return nil, err
 	}
 
 	var results []VideoMetadata
 
 	for _, kv := range res.Kvs {
 		var metadata VideoMetadata
-		err = json.Unmarshal(kv.Value, metadata)
+		err = json.Unmarshal(kv.Value, &metadata)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse metadata for %s: %w", kv.Key, err)

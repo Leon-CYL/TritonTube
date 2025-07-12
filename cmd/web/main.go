@@ -66,12 +66,6 @@ func main() {
 	fmt.Println("Creating metadata service of type", metadataServiceType, "with options", metadataServiceOptions)
 	// TODO: Implement metadata service creation logic
 	switch metadataServiceType {
-	case "sqlite":
-		metadataService, err = web.NewSQLiteVideoMetadataService(metadataServiceOptions)
-		if err != nil {
-			fmt.Printf("Create sqlite db error: %v.\n", err)
-			return
-		}
 	case "etcd":
 		nodes := strings.Split(metadataServiceOptions, ",")
 		metadataService, err = web.NewEtcdVideoMetadataService(nodes)
@@ -91,13 +85,6 @@ func main() {
 	fmt.Println("Creating content service of type", contentServiceType, "with options", contentServiceOptions)
 	// TODO: Implement content service creation logic
 	switch contentServiceType {
-	case "fs":
-		contentService, err = web.NewFSVideoContentService(contentServiceOptions)
-		if err != nil {
-			fmt.Printf("Create content service error: %v.\n", err)
-			return
-		}
-
 	case "nw":
 		nodes := strings.Split(contentServiceOptions, ",")
 
