@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"sort"
+	"time"
 	"tritontube/internal/proto"
 	"tritontube/internal/storage"
 
@@ -78,7 +79,7 @@ func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]b
 		log.Fatalf("No valid storage address found for: %s", filepath)
 	}
 	conn, err := grpc.NewClient(storageAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	
+
 	if err != nil {
 		log.Fatalf("Failed to connect to server: %v", err)
 		return nil, err
@@ -107,7 +108,7 @@ func (ns *NetworkVideoContentService) Write(videoId string, filename string, dat
 		log.Fatalf("No valid storage address found for: %s", filepath)
 	}
 	conn, err := grpc.NewClient(storageAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	
+
 	if err != nil {
 		log.Fatalf("Failed to connect to server: %v", err)
 		return err
@@ -183,8 +184,6 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 	ns.storageIds = append(ns.storageIds, newNodeId)
 	sort.Slice(ns.storageIds, func(i, j int) bool { return ns.storageIds[i] < ns.storageIds[j] })
 
-	count := 0
-
 	conn, err := grpc.NewClient(peerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Printf("Failed to connect to node %s: %v", peerAddr, err)
@@ -199,6 +198,8 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 	}
 	fmt.Printf("Number of files in Node %v: %v\n", peerAddr, len(listRes.VideoIds))
 
+	count := 0
+	start := time.Now()
 	for i := 0; i < len(listRes.VideoIds); i++ {
 		filePath := listRes.VideoIds[i] + "/" + listRes.Filenames[i]
 
@@ -227,8 +228,9 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 			count++
 		}
 	}
+	log.Println("AddNode: Time taken to migrate files: %s", time.Since(start))
 
-	fmt.Printf("Added %v files to Node %v\n", count, req.NodeAddress)
+	log.Println("Added %d files to Node %s", count, req.NodeAddress)
 
 	return &proto.AddNodeResponse{MigratedFileCount: int32(count)}, nil
 }
@@ -267,6 +269,7 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 	count := 0
 	fmt.Printf("Number of files: %v\n", len(videoIds))
 
+	start := time.Now()
 	for i := 0; i < len(videoIds); i++ {
 
 		readRes, err := client.ReadFile(context.Background(), &proto.ReadRequest{
@@ -292,6 +295,7 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 		}
 		count++
 	}
+	log.Println("RemoveNode: Time taken to migrate files: %s", time.Since(start))
 
 	for i, id := range ns.storageIds {
 		if id == removeNodeId {
@@ -322,4 +326,3 @@ func (ns *NetworkVideoContentService) ListNodes(ctx context.Context, req *proto.
 
 	return &proto.ListNodesResponse{Nodes: nodes}, nil
 }
-

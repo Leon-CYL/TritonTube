@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -181,24 +182,48 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
+	fileCount := 0
+	totalWriteTime := time.Duration(0)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			fileName := entry.Name()
-			filePath := filepath.Join(dashDir, fileName)
+		wg.Add(1)
+		go func(entry os.DirEntry) {
+			defer wg.Done()
+			if !entry.IsDir() {
+				fileName := entry.Name()
+				filePath := filepath.Join(dashDir, fileName)
 
-			// Read the generated DASH file
-			data, err := os.ReadFile(filePath)
-			if err != nil {
-				http.Error(w, "Error reading DASH file: "+fileName, http.StatusInternalServerError)
-				return
-			}
+				data, err := os.ReadFile(filePath)
+				if err != nil {
+					log.Println(w, "Error reading DASH file: "+fileName, http.StatusInternalServerError)
+					return
+				}
 
-			// Write the DASH file to the content service using the video ID as the directory
-			if err := s.contentService.Write(videoId, fileName, data); err != nil {
-				http.Error(w, "Error storing DASH file: "+fileName, http.StatusInternalServerError)
-				return
+				writeStart := time.Now()
+				if err := s.contentService.Write(videoId, fileName, data); err != nil {
+					log.Println(w, "Error storing DASH file: "+fileName, http.StatusInternalServerError)
+					return
+				}
+				writeDuration := time.Since(writeStart)
+
+				mu.Lock()
+				totalWriteTime += writeDuration
+				fileCount++
+				mu.Unlock()
 			}
-		}
+		}(entry)
+	}
+	wg.Wait()
+
+	// Storage Node write performance metrics
+	log.Printf("Uploaded %d DASH files for %s in %s", fileCount, videoId, time.Since(start))
+	if fileCount > 0 {
+		log.Printf("Total write time: %s", totalWriteTime)
+		avg := totalWriteTime / time.Duration(fileCount)
+		log.Printf("Average write time per file: %s", avg)
 	}
 
 	err = s.metadataService.Create(videoId, time.Now())
@@ -266,7 +291,11 @@ func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
 	filename := parts[1]
 	log.Println("Video ID:", videoId, "Filename:", filename)
 
+	// Storage Node read performance metrics
+	start := time.Now()
 	content, err := s.contentService.Read(videoId, filename)
+	log.Printf("Read %s in %s\n", filename, time.Since(start))
+
 	if err != nil {
 		log.Println("Video content not Found: " + filename)
 		http.Error(w, "Video content not Found", http.StatusInternalServerError)

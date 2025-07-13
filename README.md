@@ -1,5 +1,9 @@
 # TritonTube
 
+## Description:
+TritonTube is a distributed video-sharing platform built in Go that allows users to upload MP4 videos, which are transcoded into DASH format and distributed across multiple content nodes. Metadata such as video IDs and upload timestamps are managed using a multi-node etcd cluster to ensure high availability and consistency. The system uses gRPC for efficient server-client communication between nodes, enabling scalable and resilient coordination of video storage and metadata services. TritonTube uses practical distributed systems design with modular components and fault-tolerant architecture.
+
+
 ## Command
 
 Storage Command:
@@ -50,10 +54,21 @@ Server Command:
 Storage Node Operation Command:
 
 1. Add
-> go run ./cmd/admin add localhost:3343 localhost:8090
+> go run ./cmd/admin add localhost:3343 localhost:8096
 
 2. Remove
-> go run ./cmd/admin remove localhost:3343 localhost:8090
+> go run ./cmd/admin remove localhost:3343 localhost:8096
 
 3. List
-> go run ./cmd/admin remove localhost:3343 localhost:8090
+> go run ./cmd/admin list localhost:3343
+
+
+## Perfromance
+
+Write
+1. Write File Performance: 475 DASH files for video 1 in 29.48 second, average 61.38ms
+2. By parallelizing the write operations using goroutines, I reduced the file upload time by approximately 90% compared to the sequential implementation.(Resume)
+3. By using Goroutines to parallelize the file upload process, I was able to reduce the file uploading time from ~30 secoends to ~3 seconds of a 17 minutes long video.(Project Description)
+
+Read
+1. Read File Performance: ~58ms

@@ -111,7 +111,6 @@ func (ss *StorageServer) ListFile(ctx context.Context, req *proto.ListRequest) (
 
 func (ss *StorageServer) SendFile(ctx context.Context, req *proto.SendRequest) (*proto.SendResponse, error) {
 	conn, err := grpc.NewClient(req.PeerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	fmt.Printf("Node receiving files: %v\n", req.PeerAddr)
 	if err != nil {
 		log.Printf("Failed to connect to server: %v", err)
 		return &proto.SendResponse{Success: false}, err
