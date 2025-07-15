@@ -19,7 +19,6 @@ message WriteRequest {
 }
 
 message WriteResponse {
-    bool success = 1;
 }
 
 message ReadRequest {
@@ -28,8 +27,7 @@ message ReadRequest {
 }
 
 message ReadResponse {
-    bool success = 1;
-    bytes data = 2;
+    bytes data = 1;
 }
 
 message SendRequest {
@@ -40,7 +38,6 @@ message SendRequest {
 }
 
 message SendResponse {
-    bool success = 1;
 }
 
 message ListRequest {}
@@ -48,11 +45,9 @@ message ListRequest {}
 message ListResponse {
     repeated string videoIds = 1;
     repeated string filenames = 2;
-    bool success = 3;
 }
 
 message ShutdownRequest {}
 
 message ShutdownResponse {
-  bool success = 1;
 }

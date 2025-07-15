@@ -93,7 +93,7 @@ func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]b
 		Filename: filename,
 	})
 
-	if err != nil || response.Success == false {
+	if err != nil {
 		log.Fatalf("ReadFile RPC failed: %v", err)
 		return nil, err
 	}
@@ -117,13 +117,13 @@ func (ns *NetworkVideoContentService) Write(videoId string, filename string, dat
 
 	client := proto.NewVideoContentStorageServiceClient(conn)
 
-	response, err := client.WriteFile(context.Background(), &proto.WriteRequest{
+	_, err = client.WriteFile(context.Background(), &proto.WriteRequest{
 		Data:     data,
 		VideoId:  videoId,
 		Filename: filename,
 	})
 
-	if err != nil || response.Success == false {
+	if err != nil {
 		log.Fatalf("WriteFile RPC failed: %v", err)
 		return err
 	}
@@ -193,7 +193,7 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 	client := proto.NewVideoContentStorageServiceClient(conn)
 
 	listRes, err := client.ListFile(context.Background(), &proto.ListRequest{})
-	if err != nil || listRes == nil || !listRes.Success {
+	if err != nil || listRes == nil {
 		log.Printf("Failed to list files from node %s: %v", peerAddr, err)
 	}
 	fmt.Printf("Number of files in Node %v: %v\n", peerAddr, len(listRes.VideoIds))
@@ -210,18 +210,18 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 				VideoId:  listRes.VideoIds[i],
 				Filename: listRes.Filenames[i],
 			})
-			if err != nil || !readRes.Success {
+			if err != nil{
 				log.Printf("Failed to read file %s/%s: %v", listRes.VideoIds[i], listRes.Filenames[i], err)
 				return &proto.AddNodeResponse{MigratedFileCount: int32(count)}, err
 			}
 
-			sendRes, err := client.SendFile(context.Background(), &proto.SendRequest{
+			_, err = client.SendFile(context.Background(), &proto.SendRequest{
 				PeerAddr: req.NodeAddress,
 				VideoId:  listRes.VideoIds[i],
 				Filename: listRes.Filenames[i],
 				Data:     readRes.Data,
 			})
-			if err != nil || !sendRes.Success {
+			if err != nil {
 				log.Printf("Failed to send file %s/%s: %v", listRes.VideoIds[i], listRes.Filenames[i], err)
 				return &proto.AddNodeResponse{MigratedFileCount: int32(count)}, err
 			}
@@ -259,7 +259,7 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 
 	// Assign files from the removed server to the neighbor server based on consistant hashing
 	response, err := client.ListFile(context.Background(), &proto.ListRequest{})
-	if err != nil || response == nil || !response.Success {
+	if err != nil {
 		log.Printf("ListFile RPC failed: %v\n", err)
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
 	}
@@ -277,19 +277,19 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 			Filename: filenames[i],
 		})
 
-		if err != nil || readRes.Success == false {
+		if err != nil {
 			log.Fatalf("ReadFile RPC failed: %v", err)
 			return &proto.RemoveNodeResponse{MigratedFileCount: int32(count)}, err
 		}
 
-		sendRes, err := client.SendFile(context.Background(), &proto.SendRequest{
+		_, err = client.SendFile(context.Background(), &proto.SendRequest{
 			PeerAddr: ns.storageServers[nodeId],
 			VideoId:  videoIds[i],
 			Filename: filenames[i],
 			Data:     readRes.Data,
 		})
 
-		if err != nil || sendRes.Success == false {
+		if err != nil {
 			log.Fatalf("SendFile RPC failed: %v", err)
 			return &proto.RemoveNodeResponse{MigratedFileCount: int32(count)}, err
 		}

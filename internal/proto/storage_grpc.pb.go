@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.20.3
-// source: proto/storage.proto
+// source: storage.proto
 
 package proto
 
@@ -270,5 +270,5 @@ var VideoContentStorageService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/storage.proto",
+	Metadata: "storage.proto",
 }

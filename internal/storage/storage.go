@@ -31,20 +31,21 @@ func NewStorageServer(base string, server *grpc.Server) *StorageServer {
 	}
 
 	return &StorageServer{
-		basePath: base, 
-		videoids: make([]string, 0), 
-		filenames: make([]string, 0), 
+		basePath:   base,
+		videoids:   make([]string, 0),
+		filenames:  make([]string, 0),
 		grpcServer: server,
 	}
 }
 
 func (ss *StorageServer) WriteFile(ctx context.Context, req *proto.WriteRequest) (*proto.WriteResponse, error) {
+
 	dirPath := filepath.Join(ss.basePath, req.VideoId)
 
 	// Create the directory if it does not exist
 	if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
 		fmt.Printf("Create file failed: %v\n", err)
-		return &proto.WriteResponse{Success: false}, err
+		return &proto.WriteResponse{}, err
 	}
 
 	filePath := filepath.Join(dirPath, req.Filename)
@@ -52,13 +53,13 @@ func (ss *StorageServer) WriteFile(ctx context.Context, req *proto.WriteRequest)
 	err := os.WriteFile(filePath, req.Data, 0644)
 	if err != nil {
 		fmt.Printf("Write file failed: %v\n", err)
-		return &proto.WriteResponse{Success: false}, err
+		return &proto.WriteResponse{}, err
 	}
 
 	ss.videoids = append(ss.videoids, req.VideoId)
 	ss.filenames = append(ss.filenames, req.Filename)
 
-	return &proto.WriteResponse{Success: true}, nil
+	return &proto.WriteResponse{}, nil
 }
 
 func (ss *StorageServer) ReadFile(ctx context.Context, req *proto.ReadRequest) (*proto.ReadResponse, error) {
@@ -66,9 +67,9 @@ func (ss *StorageServer) ReadFile(ctx context.Context, req *proto.ReadRequest) (
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Printf("Read file failed: %v\n", err)
-		return &proto.ReadResponse{Success: false, Data: nil}, err
+		return &proto.ReadResponse{Data: nil}, err
 	}
-	return &proto.ReadResponse{Success: true, Data: data}, nil
+	return &proto.ReadResponse{Data: data}, nil
 }
 
 func (ss *StorageServer) ListFile(ctx context.Context, req *proto.ListRequest) (*proto.ListResponse, error) {
@@ -78,7 +79,7 @@ func (ss *StorageServer) ListFile(ctx context.Context, req *proto.ListRequest) (
 	entries, err := os.ReadDir(ss.basePath)
 	if err != nil {
 		log.Printf("Failed to read storage directory: %v", err)
-		return &proto.ListResponse{Success: false}, err
+		return &proto.ListResponse{}, err
 	}
 
 	for _, entry := range entries {
@@ -105,7 +106,6 @@ func (ss *StorageServer) ListFile(ctx context.Context, req *proto.ListRequest) (
 	return &proto.ListResponse{
 		VideoIds:  videoIds,
 		Filenames: filenames,
-		Success:   true,
 	}, nil
 }
 
@@ -113,21 +113,21 @@ func (ss *StorageServer) SendFile(ctx context.Context, req *proto.SendRequest) (
 	conn, err := grpc.NewClient(req.PeerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Printf("Failed to connect to server: %v", err)
-		return &proto.SendResponse{Success: false}, err
+		return &proto.SendResponse{}, err
 	}
 	defer conn.Close()
 
 	client := proto.NewVideoContentStorageServiceClient(conn)
 
-	response, err := client.WriteFile(context.Background(), &proto.WriteRequest{
+	_, err = client.WriteFile(context.Background(), &proto.WriteRequest{
 		Data:     req.Data,
 		VideoId:  req.VideoId,
 		Filename: req.Filename,
 	})
 
-	if err != nil || !response.Success {
+	if err != nil {
 		log.Printf("WriteFile RPC failed: %v", err)
-		return &proto.SendResponse{Success: false}, err
+		return &proto.SendResponse{}, err
 	}
 
 	// Only remove if transfer is successful
@@ -135,7 +135,7 @@ func (ss *StorageServer) SendFile(ctx context.Context, req *proto.SendRequest) (
 	err = os.Remove(filePath)
 	if err != nil {
 		fmt.Printf("Remove file failed: %v\n", err)
-		return &proto.SendResponse{Success: false}, err
+		return &proto.SendResponse{}, err
 	}
 
 	// Remove entry from internal lists
@@ -147,7 +147,7 @@ func (ss *StorageServer) SendFile(ctx context.Context, req *proto.SendRequest) (
 		}
 	}
 
-	return &proto.SendResponse{Success: true}, nil
+	return &proto.SendResponse{}, nil
 }
 
 func (ss *StorageServer) Shutdown(ctx context.Context, req *proto.ShutdownRequest) (*proto.ShutdownResponse, error) {
@@ -156,5 +156,5 @@ func (ss *StorageServer) Shutdown(ctx context.Context, req *proto.ShutdownReques
 		time.Sleep(500 * time.Millisecond)
 		ss.grpcServer.GracefulStop()
 	}()
-	return &proto.ShutdownResponse{Success: true}, nil
+	return &proto.ShutdownResponse{}, nil
 }

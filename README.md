@@ -6,6 +6,13 @@ TritonTube is a distributed video-sharing platform built in Go that allows users
 
 ## Command
 
+gRPC:
+> go install google.golang.org/protobuf/cmd/protoc-gen-go@latest <br>
+> go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest <br>
+> export PATH="$PATH:$(go env GOPATH)/bin" <br>
+> protoc --proto_path=proto --go_out=. --go-grpc_out=. proto/storage.proto <br>
+
+
 Storage Command:
 
 1. Storage 1
@@ -22,40 +29,40 @@ etcd Command:
 1. etcd node 1
 
    > etcd --name node1 \
-   >  --data-dir ./data1 \
-   >  --initial-advertise-peer-urls http://localhost:2380 \
-   >  --listen-peer-urls http://localhost:2380 \
-   >  --listen-client-urls http://localhost:8093 \
-   >  --advertise-client-urls http://localhost:8093 \
-   >  --initial-cluster-token etcd-cluster-1 \
-   >  --initial-cluster node1=http://localhost:2380,node2=http://localhost:2381,node3=http://localhost:2382 \
-   >  --initial-cluster-state new
-   > <br>
+     --data-dir ./data1 \
+     --initial-advertise-peer-urls http://localhost:2380 \
+     --listen-peer-urls http://localhost:2380 \
+     --listen-client-urls http://localhost:8093 \
+     --advertise-client-urls http://localhost:8093 \
+     --initial-cluster-token etcd-cluster-1 \
+     --initial-cluster node1=http://localhost:2380,node2=http://localhost:2381,node3=http://localhost:2382 \
+     --initial-cluster-state new
+   <br>
 
 2. etcd node 2
 
    > etcd --name node2 \
-   >  --data-dir ./data2 \
-   >  --initial-advertise-peer-urls http://localhost:2381 \
-   >  --listen-peer-urls http://localhost:2381 \
-   >  --listen-client-urls http://localhost:8094 \
-   >  --advertise-client-urls http://localhost:8094 \
-   >  --initial-cluster-token etcd-cluster-1 \
-   >  --initial-cluster node1=http://localhost:2380,node2=http://localhost:2381,node3=http://localhost:2382 \
-   >  --initial-cluster-state new
-   > <br>
+     --data-dir ./data2 \
+     --initial-advertise-peer-urls http://localhost:2381 \
+     --listen-peer-urls http://localhost:2381 \
+     --listen-client-urls http://localhost:8094 \
+     --advertise-client-urls http://localhost:8094 \
+     --initial-cluster-token etcd-cluster-1 \
+     --initial-cluster node1=http://localhost:2380,node2=http://localhost:2381,node3=http://localhost:2382 \
+     --initial-cluster-state new
+   <br>
 
 3. etcd node 3
    > etcd --name node3 \
-   >  --data-dir ./data3 \
-   >  --initial-advertise-peer-urls http://localhost:2382 \
-   >  --listen-peer-urls http://localhost:2382 \
-   >  --listen-client-urls http://localhost:8095 \
-   >  --advertise-client-urls http://localhost:8095 \
-   >  --initial-cluster-token etcd-cluster-1 \
-   >  --initial-cluster node1=http://localhost:2380,node2=http://localhost:2381,node3=http://localhost:2382 \
-   >  --initial-cluster-state new
-   > <br>
+     --data-dir ./data3 \
+     --initial-advertise-peer-urls http://localhost:2382 \
+     --listen-peer-urls http://localhost:2382 \
+     --listen-client-urls http://localhost:8095 \
+     --advertise-client-urls http://localhost:8095 \
+     --initial-cluster-token etcd-cluster-1 \
+     --initial-cluster node1=http://localhost:2380,node2=http://localhost:2381,node3=http://localhost:2382 \
+     --initial-cluster-state new
+   <br>
 
 Server Command:
 
@@ -78,9 +85,24 @@ Storage Node Operation Command:
 
 Write
 
-1. Write File Performance: 475 DASH files for video 1 in 29.48 second, average 61.38ms
-2. By parallelizing the write operations using goroutines, I reduced the file upload time by approximately 90% compared to the sequential implementation.(Resume)
-3. By using Goroutines to parallelize the file upload process, I was able to reduce the file uploading time from ~30 seconds to ~3 seconds of a 17 minutes long video.(Project Description)
+Sequential for loop: Write File Performance: 475 DASH files for video 1 in 29.48 second, average 61.38ms
+
+ThreadPool:
+
+1. 32 workers:
+2025/07/15 13:45:58 Uploaded 475 DASH files for video2 in 1.211037125s
+2025/07/15 13:45:58 Average write time per file: 2.549551ms
+
+2. 64 workers:
+2025/07/15 13:47:30 Uploaded 475 DASH files for video3 in 800.514666ms
+2025/07/15 13:47:30 Average write time per file: 1.685294ms
+
+3. 128 workers:
+2025/07/15 13:50:42 Uploaded 475 DASH files for video4 in 5.85389025s
+2025/07/15 13:50:42 Average write time per file: 12.323979ms
+
+1. By parallelizing the write operations with goroutines with a thread pool to prevent overload and improve throughput, I reduced the upload time for a 17-minute video from 29.48 seconds to 800.51 milliseconds — achieving an approximate 97% reduction in upload time.(Resume)
+
 
 Read
 
