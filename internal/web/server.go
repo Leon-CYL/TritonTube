@@ -182,12 +182,12 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	start := time.Now()
 	fileCount := 0
 	totalWriteTime := time.Duration(0)
 	var wg sync.WaitGroup
 	maxWorkers := 64
 	sem := make(chan struct{}, maxWorkers)
+	start := time.Now()
 
 	for _, entry := range entries {
 		if !entry.IsDir() {

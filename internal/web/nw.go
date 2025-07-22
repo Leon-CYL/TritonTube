@@ -210,7 +210,7 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 				VideoId:  listRes.VideoIds[i],
 				Filename: listRes.Filenames[i],
 			})
-			if err != nil{
+			if err != nil {
 				log.Printf("Failed to read file %s/%s: %v", listRes.VideoIds[i], listRes.Filenames[i], err)
 				return &proto.AddNodeResponse{MigratedFileCount: int32(count)}, err
 			}
@@ -228,9 +228,12 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 			count++
 		}
 	}
-	log.Println("AddNode: Time taken to migrate files: %s", time.Since(start))
 
-	log.Println("Added %d files to Node %s", count, req.NodeAddress)
+	end := time.Since(start)
+	log.Printf("Added %d files to Node %s\n", count, req.NodeAddress)
+
+	log.Printf("AddNode: Time taken to migrate files: %s\n", end)
+	log.Printf("AddNode: Average time per file: %s\n", end/time.Duration(count))
 
 	return &proto.AddNodeResponse{MigratedFileCount: int32(count)}, nil
 }
@@ -295,7 +298,10 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 		}
 		count++
 	}
-	log.Println("RemoveNode: Time taken to migrate files: %s", time.Since(start))
+
+	end := time.Since(start)
+	log.Printf("RemoveNode: Time taken to migrate files: %s\n", end)
+	log.Printf("RemoveNode: Average time per file: %s\n", end/time.Duration(count))
 
 	for i, id := range ns.storageIds {
 		if id == removeNodeId {
