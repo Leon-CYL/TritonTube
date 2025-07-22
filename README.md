@@ -7,6 +7,7 @@ TritonTube is a distributed video-sharing platform built in Go that allows users
 ## Command
 
 gRPC:
+
 > go install google.golang.org/protobuf/cmd/protoc-gen-go@latest <br>
 
 > go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest <br>
@@ -16,20 +17,39 @@ gRPC:
 > protoc --proto_path=proto --go_out=. --go-grpc_out=. proto/storage.proto <br>
 
 etcd:
+
 > brew install etcd<br>
 
 RocksDB:
-> brew install rocksdb
-> go get github.com/tecbot/gorocksdb
 
+> brew install rocksdb<br>
+
+> go get github.com/linxGnu/grocksdb@latest<br>
 
 Storage Command(3 terminals):
 
 1. Storage 1
+
+   > export CGO_CFLAGS="-I/opt/homebrew/include"<br>
+
+   > export CGO_LDFLAGS="-L/opt/homebrew/lib -lrocksdb"<br>
+
    > go run ./cmd/storage -port 8090 "./storage/8090"<br>
+
 2. Storage 2
+
+   > export CGO_CFLAGS="-I/opt/homebrew/include"<br>
+
+   > export CGO_LDFLAGS="-L/opt/homebrew/lib -lrocksdb"<br>
+
    > go run ./cmd/storage -port 8091 "./storage/8091"<br>
+
 3. Storage 3
+
+   > export CGO_CFLAGS="-I/opt/homebrew/include"<br>
+
+   > export CGO_LDFLAGS="-L/opt/homebrew/lib -lrocksdb"<br>
+
    > go run ./cmd/storage -port 8092 "./storage/8092"<br>
 
 etcd Command(3 terminals):
@@ -74,6 +94,10 @@ etcd Command(3 terminals):
 
 Server Command(1 terminal):
 
+> export CGO_CFLAGS="-I/opt/homebrew/include"<br>
+
+> export CGO_LDFLAGS="-L/opt/homebrew/lib -lrocksdb"<br>
+
 > go run ./cmd/web -port 3344 etcd "localhost:8093,localhost:8094,localhost:8095" nw "localhost:3343,localhost:8090,localhost:8091,localhost:8092"<br>
 
 Storage Node Operation Command(1 terminal):
@@ -102,16 +126,15 @@ Sequential for loop:
 ThreadPool:
 
 1. 32 workers:
-2025/07/15 13:45:58 Uploaded 475 DASH files for video2 in 1.211037125s
-2025/07/15 13:45:58 Average write time per file: 2.549551ms
+   2025/07/15 13:45:58 Uploaded 475 DASH files for video2 in 1.211037125s
+   2025/07/15 13:45:58 Average write time per file: 2.549551ms
 
 2. 64 workers:
-2025/07/15 13:47:30 Uploaded 475 DASH files for video3 in 800.514666ms
-2025/07/15 13:47:30 Average write time per file: 1.685294ms
+   2025/07/15 13:47:30 Uploaded 475 DASH files for video3 in 800.514666ms
+   2025/07/15 13:47:30 Average write time per file: 1.685294ms
 
 3. 128 workers:
-2025/07/15 13:50:42 Uploaded 475 DASH files for video4 in 5.85389025s
-2025/07/15 13:50:42 Average write time per file: 12.323979ms
+   2025/07/15 13:50:42 Uploaded 475 DASH files for video4 in 5.85389025s
+   2025/07/15 13:50:42 Average write time per file: 12.323979ms
 
 1. By parallelizing the write operations using goroutines with a thread pool to improve concurrency and prevent overload, I reduced the upload time of a 17-minute video from 29.48 seconds to 800.51 milliseconds — achieving an approximate 97% reduction in upload time.(Resume)
-

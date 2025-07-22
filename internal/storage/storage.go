@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
+	"strings"
 	"time"
 	"tritontube/internal/proto"
 
-	"github.com/tecbot/gorocksdb"
+	grocksdb "github.com/linxGnu/grocksdb"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -20,16 +21,20 @@ import (
 type StorageServer struct {
 	proto.UnimplementedVideoContentStorageServiceServer
 	basePath   string
-	videoids   []string
-	filenames  []string
 	grpcServer *grpc.Server
-	db         *gorocksdb.DB
+	db         *grocksdb.DB
 }
 
 func NewStorageServer(base string, server *grpc.Server) *StorageServer {
-	opt := gorocksdb.NewDefaultOptions()
+	if err := os.MkdirAll(base, os.ModePerm); err != nil {
+		fmt.Printf("Failed to create storage directory: %v\n", err)
+		return nil
+	}
+
+	// Initialize RocksDB
+	opt := grocksdb.NewDefaultOptions()
 	opt.SetCreateIfMissing(true)
-	db, err := gorocksdb.OpenDb(opt, base)
+	db, err := grocksdb.OpenDb(opt, base)
 	if err != nil {
 		fmt.Printf("Storage Server Start Error: %v\n", err)
 		return nil
@@ -37,8 +42,6 @@ func NewStorageServer(base string, server *grpc.Server) *StorageServer {
 
 	return &StorageServer{
 		basePath:   base,
-		videoids:   make([]string, 0),
-		filenames:  make([]string, 0),
 		grpcServer: server,
 		db:         db,
 	}
@@ -46,33 +49,28 @@ func NewStorageServer(base string, server *grpc.Server) *StorageServer {
 
 func (ss *StorageServer) WriteFile(ctx context.Context, req *proto.WriteRequest) (*proto.WriteResponse, error) {
 
-	dirPath := filepath.Join(ss.basePath, req.VideoId)
-
-	// Create the directory if it does not exist
-	if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
-		fmt.Printf("Create file failed: %v\n", err)
-		return &proto.WriteResponse{}, err
-	}
-
-	filePath := filepath.Join(dirPath, req.Filename)
-
-	err := os.WriteFile(filePath, req.Data, 0644)
+	// Write file content to RocksDB, used videoId + filename as key and data as value
+	wo := grocksdb.NewDefaultWriteOptions()
+	defer wo.Destroy()
+	err := ss.db.Put(wo, []byte(req.VideoId+"/"+req.Filename), req.Data)
+	wo.SetSync(true)
 	if err != nil {
-		fmt.Printf("Write file failed: %v\n", err)
+		log.Printf("Storage: Write file failed: %v\n", err)
 		return &proto.WriteResponse{}, err
 	}
-
-	ss.videoids = append(ss.videoids, req.VideoId)
-	ss.filenames = append(ss.filenames, req.Filename)
 
 	return &proto.WriteResponse{}, nil
 }
 
 func (ss *StorageServer) ReadFile(ctx context.Context, req *proto.ReadRequest) (*proto.ReadResponse, error) {
-	filePath := filepath.Join(ss.basePath, req.VideoId, req.Filename)
-	data, err := os.ReadFile(filePath)
+	// Read file content from RocksDB, used videoId + filename as key and data as value
+	ro := grocksdb.NewDefaultReadOptions()
+	defer ro.Destroy()
+	value, err := ss.db.Get(ro, []byte(req.VideoId+"/"+req.Filename))
+	data := append([]byte{}, value.Data()...)
+	defer value.Free()
 	if err != nil {
-		fmt.Printf("Read file failed: %v\n", err)
+		log.Printf("Storage: Read file failed: %v\n", err)
 		return &proto.ReadResponse{Data: nil}, err
 	}
 	return &proto.ReadResponse{Data: data}, nil
@@ -82,33 +80,21 @@ func (ss *StorageServer) ListFile(ctx context.Context, req *proto.ListRequest) (
 	videoIds := []string{}
 	filenames := []string{}
 
-	entries, err := os.ReadDir(ss.basePath)
-	if err != nil {
-		log.Printf("Failed to read storage directory: %v", err)
-		return &proto.ListResponse{}, err
-	}
+	ro := grocksdb.NewDefaultReadOptions()
+	it := ss.db.NewIterator(ro)
+	defer it.Close()
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			videoId := entry.Name()
-			videoDir := filepath.Join(ss.basePath, videoId)
-
-			files, err := os.ReadDir(videoDir)
-			if err != nil {
-				log.Printf("Failed to read videoId dir: %s, err: %v", videoId, err)
-				continue
-			}
-
-			for _, file := range files {
-				if !file.IsDir() {
-					videoIds = append(videoIds, videoId)
-					filenames = append(filenames, file.Name())
-				}
-			}
+	for it.SeekToFirst(); it.Valid(); it.Next() {
+		key := string(it.Key().Data())
+		parts := strings.SplitN(key, "/", 2)
+		if len(parts) == 2 {
+			videoIds = append(videoIds, parts[0])
+			filenames = append(filenames, parts[1])
 		}
+		it.Key().Free()
 	}
+	fmt.Printf("ListFile: Found %d files\n", len(videoIds))
 
-	fmt.Printf("ListFile: Number of files: %v\n", len(videoIds))
 	return &proto.ListResponse{
 		VideoIds:  videoIds,
 		Filenames: filenames,
@@ -136,21 +122,14 @@ func (ss *StorageServer) SendFile(ctx context.Context, req *proto.SendRequest) (
 		return &proto.SendResponse{}, err
 	}
 
-	// Only remove if transfer is successful
-	filePath := filepath.Join(ss.basePath, req.VideoId, req.Filename)
-	err = os.Remove(filePath)
+	// Only delete from RocksDB if transfer is successful
+	wo := grocksdb.NewDefaultWriteOptions()
+	defer wo.Destroy()
+	wo.SetSync(true)
+	err = ss.db.Delete(wo, []byte(req.VideoId+"/"+req.Filename))
 	if err != nil {
-		fmt.Printf("Remove file failed: %v\n", err)
+		log.Printf("Storage: Delete file failed: %v\n", err)
 		return &proto.SendResponse{}, err
-	}
-
-	// Remove entry from internal lists
-	for i := 0; i < len(ss.videoids); i++ {
-		if ss.videoids[i] == req.VideoId && ss.filenames[i] == req.Filename {
-			ss.videoids = append(ss.videoids[:i], ss.videoids[i+1:]...)
-			ss.filenames = append(ss.filenames[:i], ss.filenames[i+1:]...)
-			break
-		}
 	}
 
 	return &proto.SendResponse{}, nil
@@ -158,6 +137,7 @@ func (ss *StorageServer) SendFile(ctx context.Context, req *proto.SendRequest) (
 
 func (ss *StorageServer) Shutdown(ctx context.Context, req *proto.ShutdownRequest) (*proto.ShutdownResponse, error) {
 	fmt.Println("Received shutdown request. Stopping server...")
+	ss.db.Close()
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		ss.grpcServer.GracefulStop()

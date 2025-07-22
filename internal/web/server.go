@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -311,7 +312,6 @@ func (s *server) handleVideo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
-	// parse /content/<videoId>/<filename>
 	videoId := r.URL.Path[len("/content/"):]
 	parts := strings.Split(videoId, "/")
 	if len(parts) != 2 {
@@ -322,32 +322,36 @@ func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
 	filename := parts[1]
 	log.Println("Video ID:", videoId, "Filename:", filename)
 
-	// Storage Node read performance metrics
 	start := time.Now()
 	content, err := s.contentService.Read(videoId, filename)
-	log.Printf("Read %s in %s\n", filename, time.Since(start))
+	log.Printf("Read %s/%s (%d bytes) in %s\n", videoId, filename, len(content), time.Since(start))
 
-	if err != nil {
+	if err != nil || content == nil || len(content) == 0 {
 		log.Println("Video content not Found: " + filename)
 		http.Error(w, "Video content not Found", http.StatusInternalServerError)
 		return
 	}
 
-	contentType := "application/octet-stream"
-	if strings.HasSuffix(filename, ".mpd") {
+	// Set headers
+	var contentType string
+	switch {
+	case strings.HasSuffix(filename, ".mpd"):
 		contentType = "application/dash+xml"
-	} else if strings.HasSuffix(filename, ".m4s") {
-		contentType = "video/iso.segment"
-	} else if strings.HasSuffix(filename, ".mp4") {
+	case strings.HasSuffix(filename, ".m4s"), strings.HasSuffix(filename, ".mp4"):
 		contentType = "video/mp4"
+	default:
+		contentType = "application/octet-stream"
 	}
 
-	// Set response headers
 	w.Header().Set("Content-Type", contentType)
-	w.WriteHeader(http.StatusOK)
-	_, err = w.Write(content)
-	if err != nil {
-		log.Println("Error writing response:", err)
-		http.Error(w, "Error sending content", http.StatusInternalServerError)
+	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Range")
+	w.Header().Set("Accept-Ranges", "bytes")
+
+	// Stream content
+	if _, err := w.Write(content); err != nil {
+		log.Printf("Error writing response: %v", err)
 	}
 }
