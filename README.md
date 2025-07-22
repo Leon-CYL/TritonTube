@@ -8,12 +8,15 @@ TritonTube is a distributed video-sharing platform built in Go that allows users
 
 gRPC:
 > go install google.golang.org/protobuf/cmd/protoc-gen-go@latest <br>
+
 > go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest <br>
+
 > export PATH="$PATH:$(go env GOPATH)/bin" <br>
+
 > protoc --proto_path=proto --go_out=. --go-grpc_out=. proto/storage.proto <br>
 
 
-Storage Command:
+Storage Command(3 terminals):
 
 1. Storage 1
    > go run ./cmd/storage -port 8090 "./storage/8090"<br>
@@ -22,7 +25,7 @@ Storage Command:
 3. Storage 3
    > go run ./cmd/storage -port 8092 "./storage/8092"<br>
 
-etcd Command:
+etcd Command(3 terminals):
 
 > brew install etcd<br>
 
@@ -64,11 +67,11 @@ etcd Command:
      --initial-cluster-state new
    <br>
 
-Server Command:
+Server Command(1 terminal):
 
 > go run ./cmd/web -port 3344 etcd "localhost:8093,localhost:8094,localhost:8095" nw "localhost:3343,localhost:8090,localhost:8091,localhost:8092"<br>
 
-Storage Node Operation Command:
+Storage Node Operation Command(1 terminal):
 
 1. Add
 
