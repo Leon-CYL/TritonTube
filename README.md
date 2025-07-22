@@ -15,6 +15,13 @@ gRPC:
 
 > protoc --proto_path=proto --go_out=. --go-grpc_out=. proto/storage.proto <br>
 
+etcd:
+> brew install etcd<br>
+
+RocksDB:
+> brew install rocksdb
+> go get github.com/tecbot/gorocksdb
+
 
 Storage Command(3 terminals):
 
@@ -26,8 +33,6 @@ Storage Command(3 terminals):
    > go run ./cmd/storage -port 8092 "./storage/8092"<br>
 
 etcd Command(3 terminals):
-
-> brew install etcd<br>
 
 1. etcd node 1
 
@@ -92,6 +97,8 @@ Sequential for loop:
 
 2. Migrate File Performance: 267 DASH files for video 1 in 16.98 second, average 63.60ms
 
+3. Read File Performance: average 58ms
+
 ThreadPool:
 
 1. 32 workers:
@@ -106,9 +113,5 @@ ThreadPool:
 2025/07/15 13:50:42 Uploaded 475 DASH files for video4 in 5.85389025s
 2025/07/15 13:50:42 Average write time per file: 12.323979ms
 
-1. By parallelizing the write operations using goroutines with a thread pool to prevent overload, I reduced the upload time of a 17-minute video from 29.48 seconds to 800.51 milliseconds — achieving an approximate 97% reduction in upload time.(Resume)
+1. By parallelizing the write operations using goroutines with a thread pool to improve concurrency and prevent overload, I reduced the upload time of a 17-minute video from 29.48 seconds to 800.51 milliseconds — achieving an approximate 97% reduction in upload time.(Resume)
 
-
-Read
-
-1. Read File Performance: ~58ms

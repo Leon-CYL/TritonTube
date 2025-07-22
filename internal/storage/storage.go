@@ -11,6 +11,7 @@ import (
 	"time"
 	"tritontube/internal/proto"
 
+	"github.com/tecbot/gorocksdb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -22,10 +23,14 @@ type StorageServer struct {
 	videoids   []string
 	filenames  []string
 	grpcServer *grpc.Server
+	db         *gorocksdb.DB
 }
 
 func NewStorageServer(base string, server *grpc.Server) *StorageServer {
-	if err := os.MkdirAll(base, os.ModePerm); err != nil {
+	opt := gorocksdb.NewDefaultOptions()
+	opt.SetCreateIfMissing(true)
+	db, err := gorocksdb.OpenDb(opt, base)
+	if err != nil {
 		fmt.Printf("Storage Server Start Error: %v\n", err)
 		return nil
 	}
@@ -35,6 +40,7 @@ func NewStorageServer(base string, server *grpc.Server) *StorageServer {
 		videoids:   make([]string, 0),
 		filenames:  make([]string, 0),
 		grpcServer: server,
+		db:         db,
 	}
 }
 
