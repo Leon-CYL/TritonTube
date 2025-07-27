@@ -19,11 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	VideoContentStorageService_WriteFile_FullMethodName = "/tritontube.VideoContentStorageService/WriteFile"
-	VideoContentStorageService_ReadFile_FullMethodName  = "/tritontube.VideoContentStorageService/ReadFile"
-	VideoContentStorageService_ListFile_FullMethodName  = "/tritontube.VideoContentStorageService/ListFile"
-	VideoContentStorageService_SendFile_FullMethodName  = "/tritontube.VideoContentStorageService/SendFile"
-	VideoContentStorageService_Shutdown_FullMethodName  = "/tritontube.VideoContentStorageService/Shutdown"
+	VideoContentStorageService_WriteFile_FullMethodName  = "/tritontube.VideoContentStorageService/WriteFile"
+	VideoContentStorageService_WriteFiles_FullMethodName = "/tritontube.VideoContentStorageService/WriteFiles"
+	VideoContentStorageService_ReadFile_FullMethodName   = "/tritontube.VideoContentStorageService/ReadFile"
+	VideoContentStorageService_ReadFiles_FullMethodName  = "/tritontube.VideoContentStorageService/ReadFiles"
+	VideoContentStorageService_SendFiles_FullMethodName  = "/tritontube.VideoContentStorageService/SendFiles"
+	VideoContentStorageService_Shutdown_FullMethodName   = "/tritontube.VideoContentStorageService/Shutdown"
 )
 
 // VideoContentStorageServiceClient is the client API for VideoContentStorageService service.
@@ -31,9 +32,10 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VideoContentStorageServiceClient interface {
 	WriteFile(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error)
+	WriteFiles(ctx context.Context, in *BatchWriteRequest, opts ...grpc.CallOption) (*BatchWriteResponse, error)
 	ReadFile(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error)
-	ListFile(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (*ListResponse, error)
-	SendFile(ctx context.Context, in *SendRequest, opts ...grpc.CallOption) (*SendResponse, error)
+	ReadFiles(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*BatchReadResponse, error)
+	SendFiles(ctx context.Context, in *BatchSendRequest, opts ...grpc.CallOption) (*SendResponse, error)
 	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
 }
 
@@ -55,6 +57,16 @@ func (c *videoContentStorageServiceClient) WriteFile(ctx context.Context, in *Wr
 	return out, nil
 }
 
+func (c *videoContentStorageServiceClient) WriteFiles(ctx context.Context, in *BatchWriteRequest, opts ...grpc.CallOption) (*BatchWriteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchWriteResponse)
+	err := c.cc.Invoke(ctx, VideoContentStorageService_WriteFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *videoContentStorageServiceClient) ReadFile(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReadResponse)
@@ -65,20 +77,20 @@ func (c *videoContentStorageServiceClient) ReadFile(ctx context.Context, in *Rea
 	return out, nil
 }
 
-func (c *videoContentStorageServiceClient) ListFile(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (*ListResponse, error) {
+func (c *videoContentStorageServiceClient) ReadFiles(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*BatchReadResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListResponse)
-	err := c.cc.Invoke(ctx, VideoContentStorageService_ListFile_FullMethodName, in, out, cOpts...)
+	out := new(BatchReadResponse)
+	err := c.cc.Invoke(ctx, VideoContentStorageService_ReadFiles_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *videoContentStorageServiceClient) SendFile(ctx context.Context, in *SendRequest, opts ...grpc.CallOption) (*SendResponse, error) {
+func (c *videoContentStorageServiceClient) SendFiles(ctx context.Context, in *BatchSendRequest, opts ...grpc.CallOption) (*SendResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SendResponse)
-	err := c.cc.Invoke(ctx, VideoContentStorageService_SendFile_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, VideoContentStorageService_SendFiles_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -100,9 +112,10 @@ func (c *videoContentStorageServiceClient) Shutdown(ctx context.Context, in *Shu
 // for forward compatibility.
 type VideoContentStorageServiceServer interface {
 	WriteFile(context.Context, *WriteRequest) (*WriteResponse, error)
+	WriteFiles(context.Context, *BatchWriteRequest) (*BatchWriteResponse, error)
 	ReadFile(context.Context, *ReadRequest) (*ReadResponse, error)
-	ListFile(context.Context, *ListRequest) (*ListResponse, error)
-	SendFile(context.Context, *SendRequest) (*SendResponse, error)
+	ReadFiles(context.Context, *BatchReadRequest) (*BatchReadResponse, error)
+	SendFiles(context.Context, *BatchSendRequest) (*SendResponse, error)
 	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
 	mustEmbedUnimplementedVideoContentStorageServiceServer()
 }
@@ -117,14 +130,17 @@ type UnimplementedVideoContentStorageServiceServer struct{}
 func (UnimplementedVideoContentStorageServiceServer) WriteFile(context.Context, *WriteRequest) (*WriteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WriteFile not implemented")
 }
+func (UnimplementedVideoContentStorageServiceServer) WriteFiles(context.Context, *BatchWriteRequest) (*BatchWriteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WriteFiles not implemented")
+}
 func (UnimplementedVideoContentStorageServiceServer) ReadFile(context.Context, *ReadRequest) (*ReadResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadFile not implemented")
 }
-func (UnimplementedVideoContentStorageServiceServer) ListFile(context.Context, *ListRequest) (*ListResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ListFile not implemented")
+func (UnimplementedVideoContentStorageServiceServer) ReadFiles(context.Context, *BatchReadRequest) (*BatchReadResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadFiles not implemented")
 }
-func (UnimplementedVideoContentStorageServiceServer) SendFile(context.Context, *SendRequest) (*SendResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SendFile not implemented")
+func (UnimplementedVideoContentStorageServiceServer) SendFiles(context.Context, *BatchSendRequest) (*SendResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendFiles not implemented")
 }
 func (UnimplementedVideoContentStorageServiceServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Shutdown not implemented")
@@ -169,6 +185,24 @@ func _VideoContentStorageService_WriteFile_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VideoContentStorageService_WriteFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchWriteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VideoContentStorageServiceServer).WriteFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VideoContentStorageService_WriteFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VideoContentStorageServiceServer).WriteFiles(ctx, req.(*BatchWriteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _VideoContentStorageService_ReadFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReadRequest)
 	if err := dec(in); err != nil {
@@ -187,38 +221,38 @@ func _VideoContentStorageService_ReadFile_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
-func _VideoContentStorageService_ListFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListRequest)
+func _VideoContentStorageService_ReadFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchReadRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(VideoContentStorageServiceServer).ListFile(ctx, in)
+		return srv.(VideoContentStorageServiceServer).ReadFiles(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: VideoContentStorageService_ListFile_FullMethodName,
+		FullMethod: VideoContentStorageService_ReadFiles_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VideoContentStorageServiceServer).ListFile(ctx, req.(*ListRequest))
+		return srv.(VideoContentStorageServiceServer).ReadFiles(ctx, req.(*BatchReadRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _VideoContentStorageService_SendFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SendRequest)
+func _VideoContentStorageService_SendFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchSendRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(VideoContentStorageServiceServer).SendFile(ctx, in)
+		return srv.(VideoContentStorageServiceServer).SendFiles(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: VideoContentStorageService_SendFile_FullMethodName,
+		FullMethod: VideoContentStorageService_SendFiles_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VideoContentStorageServiceServer).SendFile(ctx, req.(*SendRequest))
+		return srv.(VideoContentStorageServiceServer).SendFiles(ctx, req.(*BatchSendRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -253,16 +287,20 @@ var VideoContentStorageService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _VideoContentStorageService_WriteFile_Handler,
 		},
 		{
+			MethodName: "WriteFiles",
+			Handler:    _VideoContentStorageService_WriteFiles_Handler,
+		},
+		{
 			MethodName: "ReadFile",
 			Handler:    _VideoContentStorageService_ReadFile_Handler,
 		},
 		{
-			MethodName: "ListFile",
-			Handler:    _VideoContentStorageService_ListFile_Handler,
+			MethodName: "ReadFiles",
+			Handler:    _VideoContentStorageService_ReadFiles_Handler,
 		},
 		{
-			MethodName: "SendFile",
-			Handler:    _VideoContentStorageService_SendFile_Handler,
+			MethodName: "SendFiles",
+			Handler:    _VideoContentStorageService_SendFiles_Handler,
 		},
 		{
 			MethodName: "Shutdown",

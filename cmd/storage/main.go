@@ -37,8 +37,8 @@ func main() {
 	// use gRPC to start the server
 
 	grpcServer := grpc.NewServer(
-		grpc.MaxRecvMsgSize(4*1024*1024),
-		grpc.MaxSendMsgSize(4*1024*1024),
+		grpc.MaxRecvMsgSize(64*1024*1024),
+		grpc.MaxSendMsgSize(64*1024*1024),
 	)
 
 	server := storage.NewStorageServer(baseDir, grpcServer)

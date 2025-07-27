@@ -123,7 +123,7 @@ Sequential for loop:
 
 3. Read File Performance: average 58ms
 
-ThreadPool:
+ThreadPool (Write Files):
 
 1. 32 workers:
    2025/07/15 13:45:58 Uploaded 475 DASH files for video2 in 1.211037125s
@@ -137,4 +137,11 @@ ThreadPool:
    2025/07/15 13:50:42 Uploaded 475 DASH files for video4 in 5.85389025s
    2025/07/15 13:50:42 Average write time per file: 12.323979ms
 
-1. By parallelizing the write operations using goroutines with a thread pool to improve concurrency and prevent overload, I reduced the upload time of a 17-minute video from 29.48 seconds to 800.51 milliseconds — achieving an approximate 97% reduction in upload time.(Resume)
+Batch gRPC and RocksDB(Migrating Files):
+1. Migrate File Performance: 267 DASH files for video 1 in 315 ms
+
+## Resume
+
+1. Parallelized write operations using goroutines with a thread pool to improve concurrency and prevent overload, reducing the upload time of 475 DASH files from 29.48 seconds to 800.51 milliseconds — achieving an approximate 97% reduction in upload time.
+
+2. Replaced the local file system with RocksDB and implemented gRPC-based batch file transfer to minimize disk I/O during storage node migration, reducing the migration time of 267 DASH video files from 16.98 seconds to 315 milliseconds — achieving an approximate 98% reduction in transfer time.

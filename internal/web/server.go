@@ -227,36 +227,6 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Average write time per file: %s", avg)
 	}
 
-	// // Sequential write
-	// for _, entry := range entries {
-	// 	if !entry.IsDir() {
-	// 		fileName := entry.Name()
-	// 		filePath := filepath.Join(dashDir, fileName)
-
-	// 		data, err := os.ReadFile(filePath)
-	// 		if err != nil {
-	// 			log.Println(w, "Error reading DASH file: "+fileName, http.StatusInternalServerError)
-	// 			return
-	// 		}
-
-	// 		writeStart := time.Now()
-	// 		if err := s.contentService.Write(videoId, fileName, data); err != nil {
-	// 			log.Println(w, "Error storing DASH file: "+fileName, http.StatusInternalServerError)
-	// 			return
-	// 		}
-	// 		writeDuration := time.Since(writeStart)
-
-	// 		totalWriteTime += writeDuration
-	// 		fileCount++
-	// 	}
-	// }
-	// // Sequential write performance metrics
-	// log.Printf("Uploaded %d DASH files for %s in %s", fileCount, videoId, time.Since(start))
-	// if fileCount > 0 {
-	// 	log.Printf("Total write time: %s", totalWriteTime)
-	// 	avg := totalWriteTime / time.Duration(fileCount)
-	// 	log.Printf("Average write time per file: %s", avg)
-	// }
 
 	err = s.metadataService.Create(videoId, time.Now())
 	if err != nil {

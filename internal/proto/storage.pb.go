@@ -23,9 +23,9 @@ const (
 
 type WriteRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
-	VideoId       string                 `protobuf:"bytes,2,opt,name=videoId,proto3" json:"videoId,omitempty"`
-	Filename      string                 `protobuf:"bytes,3,opt,name=filename,proto3" json:"filename,omitempty"`
+	VideoId       string                 `protobuf:"bytes,1,opt,name=videoId,proto3" json:"videoId,omitempty"`
+	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -60,13 +60,6 @@ func (*WriteRequest) Descriptor() ([]byte, []int) {
 	return file_storage_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *WriteRequest) GetData() []byte {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
 func (x *WriteRequest) GetVideoId() string {
 	if x != nil {
 		return x.VideoId
@@ -79,6 +72,13 @@ func (x *WriteRequest) GetFilename() string {
 		return x.Filename
 	}
 	return ""
+}
+
+func (x *WriteRequest) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
 }
 
 type WriteResponse struct {
@@ -117,6 +117,146 @@ func (*WriteResponse) Descriptor() ([]byte, []int) {
 	return file_storage_proto_rawDescGZIP(), []int{1}
 }
 
+type FileEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	VideoId       string                 `protobuf:"bytes,1,opt,name=videoId,proto3" json:"videoId,omitempty"`
+	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FileEntry) Reset() {
+	*x = FileEntry{}
+	mi := &file_storage_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileEntry) ProtoMessage() {}
+
+func (x *FileEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_storage_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileEntry.ProtoReflect.Descriptor instead.
+func (*FileEntry) Descriptor() ([]byte, []int) {
+	return file_storage_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *FileEntry) GetVideoId() string {
+	if x != nil {
+		return x.VideoId
+	}
+	return ""
+}
+
+func (x *FileEntry) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *FileEntry) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+type BatchWriteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       []*FileEntry           `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchWriteRequest) Reset() {
+	*x = BatchWriteRequest{}
+	mi := &file_storage_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchWriteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchWriteRequest) ProtoMessage() {}
+
+func (x *BatchWriteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_storage_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchWriteRequest.ProtoReflect.Descriptor instead.
+func (*BatchWriteRequest) Descriptor() ([]byte, []int) {
+	return file_storage_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *BatchWriteRequest) GetEntries() []*FileEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+type BatchWriteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchWriteResponse) Reset() {
+	*x = BatchWriteResponse{}
+	mi := &file_storage_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchWriteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchWriteResponse) ProtoMessage() {}
+
+func (x *BatchWriteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_storage_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchWriteResponse.ProtoReflect.Descriptor instead.
+func (*BatchWriteResponse) Descriptor() ([]byte, []int) {
+	return file_storage_proto_rawDescGZIP(), []int{4}
+}
+
 type ReadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	VideoId       string                 `protobuf:"bytes,1,opt,name=videoId,proto3" json:"videoId,omitempty"`
@@ -127,7 +267,7 @@ type ReadRequest struct {
 
 func (x *ReadRequest) Reset() {
 	*x = ReadRequest{}
-	mi := &file_storage_proto_msgTypes[2]
+	mi := &file_storage_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -139,7 +279,7 @@ func (x *ReadRequest) String() string {
 func (*ReadRequest) ProtoMessage() {}
 
 func (x *ReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[2]
+	mi := &file_storage_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -152,7 +292,7 @@ func (x *ReadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadRequest.ProtoReflect.Descriptor instead.
 func (*ReadRequest) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{2}
+	return file_storage_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ReadRequest) GetVideoId() string {
@@ -178,7 +318,7 @@ type ReadResponse struct {
 
 func (x *ReadResponse) Reset() {
 	*x = ReadResponse{}
-	mi := &file_storage_proto_msgTypes[3]
+	mi := &file_storage_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -190,7 +330,7 @@ func (x *ReadResponse) String() string {
 func (*ReadResponse) ProtoMessage() {}
 
 func (x *ReadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[3]
+	mi := &file_storage_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -203,7 +343,7 @@ func (x *ReadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadResponse.ProtoReflect.Descriptor instead.
 func (*ReadResponse) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{3}
+	return file_storage_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ReadResponse) GetData() []byte {
@@ -213,31 +353,29 @@ func (x *ReadResponse) GetData() []byte {
 	return nil
 }
 
-type SendRequest struct {
+type BatchSendRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PeerAddr      string                 `protobuf:"bytes,1,opt,name=peerAddr,proto3" json:"peerAddr,omitempty"`
-	VideoId       string                 `protobuf:"bytes,2,opt,name=videoId,proto3" json:"videoId,omitempty"`
-	Filename      string                 `protobuf:"bytes,3,opt,name=filename,proto3" json:"filename,omitempty"`
-	Data          []byte                 `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
+	Entries       []*FileEntry           `protobuf:"bytes,2,rep,name=entries,proto3" json:"entries,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SendRequest) Reset() {
-	*x = SendRequest{}
-	mi := &file_storage_proto_msgTypes[4]
+func (x *BatchSendRequest) Reset() {
+	*x = BatchSendRequest{}
+	mi := &file_storage_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SendRequest) String() string {
+func (x *BatchSendRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SendRequest) ProtoMessage() {}
+func (*BatchSendRequest) ProtoMessage() {}
 
-func (x *SendRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[4]
+func (x *BatchSendRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_storage_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -248,35 +386,21 @@ func (x *SendRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SendRequest.ProtoReflect.Descriptor instead.
-func (*SendRequest) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{4}
+// Deprecated: Use BatchSendRequest.ProtoReflect.Descriptor instead.
+func (*BatchSendRequest) Descriptor() ([]byte, []int) {
+	return file_storage_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *SendRequest) GetPeerAddr() string {
+func (x *BatchSendRequest) GetPeerAddr() string {
 	if x != nil {
 		return x.PeerAddr
 	}
 	return ""
 }
 
-func (x *SendRequest) GetVideoId() string {
+func (x *BatchSendRequest) GetEntries() []*FileEntry {
 	if x != nil {
-		return x.VideoId
-	}
-	return ""
-}
-
-func (x *SendRequest) GetFilename() string {
-	if x != nil {
-		return x.Filename
-	}
-	return ""
-}
-
-func (x *SendRequest) GetData() []byte {
-	if x != nil {
-		return x.Data
+		return x.Entries
 	}
 	return nil
 }
@@ -289,7 +413,7 @@ type SendResponse struct {
 
 func (x *SendResponse) Reset() {
 	*x = SendResponse{}
-	mi := &file_storage_proto_msgTypes[5]
+	mi := &file_storage_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -301,7 +425,7 @@ func (x *SendResponse) String() string {
 func (*SendResponse) ProtoMessage() {}
 
 func (x *SendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[5]
+	mi := &file_storage_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -314,30 +438,30 @@ func (x *SendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendResponse.ProtoReflect.Descriptor instead.
 func (*SendResponse) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{5}
+	return file_storage_proto_rawDescGZIP(), []int{8}
 }
 
-type ListRequest struct {
+type BatchReadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListRequest) Reset() {
-	*x = ListRequest{}
-	mi := &file_storage_proto_msgTypes[6]
+func (x *BatchReadRequest) Reset() {
+	*x = BatchReadRequest{}
+	mi := &file_storage_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListRequest) String() string {
+func (x *BatchReadRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListRequest) ProtoMessage() {}
+func (*BatchReadRequest) ProtoMessage() {}
 
-func (x *ListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[6]
+func (x *BatchReadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_storage_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -348,34 +472,33 @@ func (x *ListRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListRequest.ProtoReflect.Descriptor instead.
-func (*ListRequest) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{6}
+// Deprecated: Use BatchReadRequest.ProtoReflect.Descriptor instead.
+func (*BatchReadRequest) Descriptor() ([]byte, []int) {
+	return file_storage_proto_rawDescGZIP(), []int{9}
 }
 
-type ListResponse struct {
+type BatchReadResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	VideoIds      []string               `protobuf:"bytes,1,rep,name=videoIds,proto3" json:"videoIds,omitempty"`
-	Filenames     []string               `protobuf:"bytes,2,rep,name=filenames,proto3" json:"filenames,omitempty"`
+	Entries       []*FileEntry           `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListResponse) Reset() {
-	*x = ListResponse{}
-	mi := &file_storage_proto_msgTypes[7]
+func (x *BatchReadResponse) Reset() {
+	*x = BatchReadResponse{}
+	mi := &file_storage_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListResponse) String() string {
+func (x *BatchReadResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListResponse) ProtoMessage() {}
+func (*BatchReadResponse) ProtoMessage() {}
 
-func (x *ListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[7]
+func (x *BatchReadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_storage_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -386,21 +509,14 @@ func (x *ListResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListResponse.ProtoReflect.Descriptor instead.
-func (*ListResponse) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{7}
+// Deprecated: Use BatchReadResponse.ProtoReflect.Descriptor instead.
+func (*BatchReadResponse) Descriptor() ([]byte, []int) {
+	return file_storage_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *ListResponse) GetVideoIds() []string {
+func (x *BatchReadResponse) GetEntries() []*FileEntry {
 	if x != nil {
-		return x.VideoIds
-	}
-	return nil
-}
-
-func (x *ListResponse) GetFilenames() []string {
-	if x != nil {
-		return x.Filenames
+		return x.Entries
 	}
 	return nil
 }
@@ -413,7 +529,7 @@ type ShutdownRequest struct {
 
 func (x *ShutdownRequest) Reset() {
 	*x = ShutdownRequest{}
-	mi := &file_storage_proto_msgTypes[8]
+	mi := &file_storage_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -425,7 +541,7 @@ func (x *ShutdownRequest) String() string {
 func (*ShutdownRequest) ProtoMessage() {}
 
 func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[8]
+	mi := &file_storage_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -438,7 +554,7 @@ func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownRequest.ProtoReflect.Descriptor instead.
 func (*ShutdownRequest) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{8}
+	return file_storage_proto_rawDescGZIP(), []int{11}
 }
 
 type ShutdownResponse struct {
@@ -449,7 +565,7 @@ type ShutdownResponse struct {
 
 func (x *ShutdownResponse) Reset() {
 	*x = ShutdownResponse{}
-	mi := &file_storage_proto_msgTypes[9]
+	mi := &file_storage_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +577,7 @@ func (x *ShutdownResponse) String() string {
 func (*ShutdownResponse) ProtoMessage() {}
 
 func (x *ShutdownResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[9]
+	mi := &file_storage_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +590,7 @@ func (x *ShutdownResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownResponse.ProtoReflect.Descriptor instead.
 func (*ShutdownResponse) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{9}
+	return file_storage_proto_rawDescGZIP(), []int{12}
 }
 
 var File_storage_proto protoreflect.FileDescriptor
@@ -483,33 +599,39 @@ const file_storage_proto_rawDesc = "" +
 	"\n" +
 	"\rstorage.proto\x12\n" +
 	"tritontube\"X\n" +
-	"\fWriteRequest\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\x12\x18\n" +
-	"\avideoId\x18\x02 \x01(\tR\avideoId\x12\x1a\n" +
-	"\bfilename\x18\x03 \x01(\tR\bfilename\"\x0f\n" +
-	"\rWriteResponse\"C\n" +
+	"\fWriteRequest\x12\x18\n" +
+	"\avideoId\x18\x01 \x01(\tR\avideoId\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x12\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\"\x0f\n" +
+	"\rWriteResponse\"U\n" +
+	"\tFileEntry\x12\x18\n" +
+	"\avideoId\x18\x01 \x01(\tR\avideoId\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x12\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\"D\n" +
+	"\x11BatchWriteRequest\x12/\n" +
+	"\aentries\x18\x01 \x03(\v2\x15.tritontube.FileEntryR\aentries\"\x14\n" +
+	"\x12BatchWriteResponse\"C\n" +
 	"\vReadRequest\x12\x18\n" +
 	"\avideoId\x18\x01 \x01(\tR\avideoId\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\"\"\n" +
 	"\fReadResponse\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\"s\n" +
-	"\vSendRequest\x12\x1a\n" +
-	"\bpeerAddr\x18\x01 \x01(\tR\bpeerAddr\x12\x18\n" +
-	"\avideoId\x18\x02 \x01(\tR\avideoId\x12\x1a\n" +
-	"\bfilename\x18\x03 \x01(\tR\bfilename\x12\x12\n" +
-	"\x04data\x18\x04 \x01(\fR\x04data\"\x0e\n" +
-	"\fSendResponse\"\r\n" +
-	"\vListRequest\"H\n" +
-	"\fListResponse\x12\x1a\n" +
-	"\bvideoIds\x18\x01 \x03(\tR\bvideoIds\x12\x1c\n" +
-	"\tfilenames\x18\x02 \x03(\tR\tfilenames\"\x11\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\"_\n" +
+	"\x10BatchSendRequest\x12\x1a\n" +
+	"\bpeerAddr\x18\x01 \x01(\tR\bpeerAddr\x12/\n" +
+	"\aentries\x18\x02 \x03(\v2\x15.tritontube.FileEntryR\aentries\"\x0e\n" +
+	"\fSendResponse\"\x12\n" +
+	"\x10BatchReadRequest\"D\n" +
+	"\x11BatchReadResponse\x12/\n" +
+	"\aentries\x18\x01 \x03(\v2\x15.tritontube.FileEntryR\aentries\"\x11\n" +
 	"\x0fShutdownRequest\"\x12\n" +
-	"\x10ShutdownResponse2\xe2\x02\n" +
+	"\x10ShutdownResponse2\xc0\x03\n" +
 	"\x1aVideoContentStorageService\x12@\n" +
-	"\tWriteFile\x12\x18.tritontube.WriteRequest\x1a\x19.tritontube.WriteResponse\x12=\n" +
-	"\bReadFile\x12\x17.tritontube.ReadRequest\x1a\x18.tritontube.ReadResponse\x12=\n" +
-	"\bListFile\x12\x17.tritontube.ListRequest\x1a\x18.tritontube.ListResponse\x12=\n" +
-	"\bSendFile\x12\x17.tritontube.SendRequest\x1a\x18.tritontube.SendResponse\x12E\n" +
+	"\tWriteFile\x12\x18.tritontube.WriteRequest\x1a\x19.tritontube.WriteResponse\x12K\n" +
+	"\n" +
+	"WriteFiles\x12\x1d.tritontube.BatchWriteRequest\x1a\x1e.tritontube.BatchWriteResponse\x12=\n" +
+	"\bReadFile\x12\x17.tritontube.ReadRequest\x1a\x18.tritontube.ReadResponse\x12H\n" +
+	"\tReadFiles\x12\x1c.tritontube.BatchReadRequest\x1a\x1d.tritontube.BatchReadResponse\x12C\n" +
+	"\tSendFiles\x12\x1c.tritontube.BatchSendRequest\x1a\x18.tritontube.SendResponse\x12E\n" +
 	"\bShutdown\x12\x1b.tritontube.ShutdownRequest\x1a\x1c.tritontube.ShutdownResponseB\x16Z\x14internal/proto;protob\x06proto3"
 
 var (
@@ -524,35 +646,43 @@ func file_storage_proto_rawDescGZIP() []byte {
 	return file_storage_proto_rawDescData
 }
 
-var file_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_storage_proto_goTypes = []any{
-	(*WriteRequest)(nil),     // 0: tritontube.WriteRequest
-	(*WriteResponse)(nil),    // 1: tritontube.WriteResponse
-	(*ReadRequest)(nil),      // 2: tritontube.ReadRequest
-	(*ReadResponse)(nil),     // 3: tritontube.ReadResponse
-	(*SendRequest)(nil),      // 4: tritontube.SendRequest
-	(*SendResponse)(nil),     // 5: tritontube.SendResponse
-	(*ListRequest)(nil),      // 6: tritontube.ListRequest
-	(*ListResponse)(nil),     // 7: tritontube.ListResponse
-	(*ShutdownRequest)(nil),  // 8: tritontube.ShutdownRequest
-	(*ShutdownResponse)(nil), // 9: tritontube.ShutdownResponse
+	(*WriteRequest)(nil),       // 0: tritontube.WriteRequest
+	(*WriteResponse)(nil),      // 1: tritontube.WriteResponse
+	(*FileEntry)(nil),          // 2: tritontube.FileEntry
+	(*BatchWriteRequest)(nil),  // 3: tritontube.BatchWriteRequest
+	(*BatchWriteResponse)(nil), // 4: tritontube.BatchWriteResponse
+	(*ReadRequest)(nil),        // 5: tritontube.ReadRequest
+	(*ReadResponse)(nil),       // 6: tritontube.ReadResponse
+	(*BatchSendRequest)(nil),   // 7: tritontube.BatchSendRequest
+	(*SendResponse)(nil),       // 8: tritontube.SendResponse
+	(*BatchReadRequest)(nil),   // 9: tritontube.BatchReadRequest
+	(*BatchReadResponse)(nil),  // 10: tritontube.BatchReadResponse
+	(*ShutdownRequest)(nil),    // 11: tritontube.ShutdownRequest
+	(*ShutdownResponse)(nil),   // 12: tritontube.ShutdownResponse
 }
 var file_storage_proto_depIdxs = []int32{
-	0, // 0: tritontube.VideoContentStorageService.WriteFile:input_type -> tritontube.WriteRequest
-	2, // 1: tritontube.VideoContentStorageService.ReadFile:input_type -> tritontube.ReadRequest
-	6, // 2: tritontube.VideoContentStorageService.ListFile:input_type -> tritontube.ListRequest
-	4, // 3: tritontube.VideoContentStorageService.SendFile:input_type -> tritontube.SendRequest
-	8, // 4: tritontube.VideoContentStorageService.Shutdown:input_type -> tritontube.ShutdownRequest
-	1, // 5: tritontube.VideoContentStorageService.WriteFile:output_type -> tritontube.WriteResponse
-	3, // 6: tritontube.VideoContentStorageService.ReadFile:output_type -> tritontube.ReadResponse
-	7, // 7: tritontube.VideoContentStorageService.ListFile:output_type -> tritontube.ListResponse
-	5, // 8: tritontube.VideoContentStorageService.SendFile:output_type -> tritontube.SendResponse
-	9, // 9: tritontube.VideoContentStorageService.Shutdown:output_type -> tritontube.ShutdownResponse
-	5, // [5:10] is the sub-list for method output_type
-	0, // [0:5] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	2,  // 0: tritontube.BatchWriteRequest.entries:type_name -> tritontube.FileEntry
+	2,  // 1: tritontube.BatchSendRequest.entries:type_name -> tritontube.FileEntry
+	2,  // 2: tritontube.BatchReadResponse.entries:type_name -> tritontube.FileEntry
+	0,  // 3: tritontube.VideoContentStorageService.WriteFile:input_type -> tritontube.WriteRequest
+	3,  // 4: tritontube.VideoContentStorageService.WriteFiles:input_type -> tritontube.BatchWriteRequest
+	5,  // 5: tritontube.VideoContentStorageService.ReadFile:input_type -> tritontube.ReadRequest
+	9,  // 6: tritontube.VideoContentStorageService.ReadFiles:input_type -> tritontube.BatchReadRequest
+	7,  // 7: tritontube.VideoContentStorageService.SendFiles:input_type -> tritontube.BatchSendRequest
+	11, // 8: tritontube.VideoContentStorageService.Shutdown:input_type -> tritontube.ShutdownRequest
+	1,  // 9: tritontube.VideoContentStorageService.WriteFile:output_type -> tritontube.WriteResponse
+	4,  // 10: tritontube.VideoContentStorageService.WriteFiles:output_type -> tritontube.BatchWriteResponse
+	6,  // 11: tritontube.VideoContentStorageService.ReadFile:output_type -> tritontube.ReadResponse
+	10, // 12: tritontube.VideoContentStorageService.ReadFiles:output_type -> tritontube.BatchReadResponse
+	8,  // 13: tritontube.VideoContentStorageService.SendFiles:output_type -> tritontube.SendResponse
+	12, // 14: tritontube.VideoContentStorageService.Shutdown:output_type -> tritontube.ShutdownResponse
+	9,  // [9:15] is the sub-list for method output_type
+	3,  // [3:9] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_storage_proto_init() }
@@ -566,7 +696,7 @@ func file_storage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_storage_proto_rawDesc), len(file_storage_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
