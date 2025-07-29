@@ -2,7 +2,11 @@
 
 ## Description:
 
-TritonTube is a distributed video-sharing platform built in Go that allows users to upload MP4 videos, which are transcoded into DASH format and distributed across multiple content nodes. Metadata such as video IDs and upload timestamps are managed using a multi-node etcd cluster to ensure high availability and consistency. The system uses gRPC for efficient server-client communication between nodes, enabling scalable and resilient coordination of video storage and metadata services. TritonTube uses practical distributed systems design with modular components and fault-tolerant architecture.
+TritonTube is a distributed video-sharing platform developed in Go that enables users to upload MP4 videos, which are automatically transcoded into the DASH format for efficient streaming. The platform distributes video content across multiple storage nodes using consistent hashing to balance load and support scalability.
+
+To manage metadata such as video IDs and upload timestamps, TritonTube uses a multi-node etcd cluster, ensuring strong consistency and high availability. gRPC is used for fast and reliable communication between nodes, supporting operations like video read/write, file migration, and node coordination.
+
+The system is built with a modular, fault-tolerant architecture that emphasizes distributed systems principles such as replication, sharding, and graceful node addition/removal. This design allows TritonTube to scale horizontally and recover from node failures without disrupting service.
 
 ## Command
 
