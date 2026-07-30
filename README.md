@@ -13,11 +13,8 @@ The system is built with a modular, fault-tolerant architecture that emphasizes 
 gRPC:
 
 > go install google.golang.org/protobuf/cmd/protoc-gen-go@latest <br>
-
 > go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest <br>
-
 > export PATH="$PATH:$(go env GOPATH)/bin" <br>
-
 > protoc --proto_path=proto --go_out=. --go-grpc_out=. proto/storage.proto <br>
 
 etcd:

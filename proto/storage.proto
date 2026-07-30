@@ -31,7 +31,9 @@ message BatchWriteRequest {
     repeated FileEntry entries = 1;
 }
 
-message BatchWriteResponse {}
+message BatchWriteResponse {
+    uint32 cnt = 1;
+}
 
 message ReadRequest {
     string videoId = 1;
@@ -42,18 +44,17 @@ message ReadResponse {
     bytes data = 1;
 }
 
-message BatchSendRequest {
-  string peerAddr = 1;
-  repeated FileEntry entries = 2;
-}
-
-message SendResponse {}
-
 message BatchReadRequest {}
 
 message BatchReadResponse {
     repeated FileEntry entries = 1;
 }
+
+message BatchSendRequest {
+  string peerAddr = 1;
+}
+
+message SendResponse {}
 
 message ShutdownRequest {}
 

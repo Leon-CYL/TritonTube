@@ -1,17 +1,18 @@
-// Lab 8: Implement a network video content service (server)
+// storage.go: Filesystem storage for video content files.
 
 package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
-	"strings"
+	"path/filepath"
+	"syscall"
 	"time"
 	"tritontube/internal/proto"
-
-	grocksdb "github.com/linxGnu/grocksdb"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -22,7 +23,6 @@ type StorageServer struct {
 	proto.UnimplementedVideoContentStorageServiceServer
 	basePath   string
 	grpcServer *grpc.Server
-	db         *grocksdb.DB
 }
 
 func NewStorageServer(base string, server *grpc.Server) *StorageServer {
@@ -31,114 +31,121 @@ func NewStorageServer(base string, server *grpc.Server) *StorageServer {
 		return nil
 	}
 
-	// Initialize and configure RocksDB
-	opt := grocksdb.NewDefaultOptions()
-	opt.SetCreateIfMissing(true)
-
-	// 4 background threads for RocksDB
-	opt.IncreaseParallelism(4)
-
-	// I/O optimization: Sync every 1MB instead of every write to reduce disk I/O
-	opt.SetUseFsync(false)
-	opt.SetBytesPerSync(1 * 1024 * 1024)
-
-	// Set up block-based table options (for Bloom filters and caching): 10 bits per key Bloom filter and 10MB LRU block cache
-	blockOpts := grocksdb.NewDefaultBlockBasedTableOptions()
-	blockOpts.SetFilterPolicy(grocksdb.NewBloomFilter(10))
-	blockOpts.SetBlockCache(grocksdb.NewLRUCache(10 * 1024 * 1024))
-	opt.SetBlockBasedTableFactory(blockOpts)
-
-	// --- Open DB ---
-	db, err := grocksdb.OpenDb(opt, base)
-	if err != nil {
-		fmt.Printf("Storage Server Start Error: %v\n", err)
-		return nil
-	}
-
 	return &StorageServer{
 		basePath:   base,
 		grpcServer: server,
-		db:         db,
 	}
 }
 
+// WriteFile writes a single file to the server's storage directory.
 func (ss *StorageServer) WriteFile(ctx context.Context, req *proto.WriteRequest) (*proto.WriteResponse, error) {
-		wo := grocksdb.NewDefaultWriteOptions()
-		defer wo.Destroy()
+	filePath, err := ss.filePath(req.VideoId, req.Filename)
+	if err != nil {
+		return &proto.WriteResponse{}, err
+	}
 
-		err := ss.db.Put(wo, []byte(req.VideoId+"/"+req.Filename), req.Data)
-		if err != nil {
-			log.Printf("Storage: Write file failed: %v\n", err)
-			return &proto.WriteResponse{}, err
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		log.Printf("Storage: Create directory failed: %v\n", err)
+		return &proto.WriteResponse{}, err
+	}
+
+	if err := os.WriteFile(filePath, req.Data, 0644); err != nil {
+		log.Printf("Storage: Write file failed: %v\n", err)
+		return &proto.WriteResponse{}, err
+	}
+
+	return &proto.WriteResponse{}, nil
+}
+
+// WriteFiles writes a batch of files to the server's storage directory.
+func (ss *StorageServer) WriteFiles(ctx context.Context, req *proto.BatchWriteRequest) (*proto.BatchWriteResponse, error) {
+	var count uint32
+	for _, entry := range req.Entries {
+		if err := ctx.Err(); err != nil {
+			return &proto.BatchWriteResponse{Cnt: count}, err
 		}
 
-		return &proto.WriteResponse{}, nil
-}
+		filePath, err := ss.filePath(entry.VideoId, entry.Filename)
+		if err != nil {
+			return &proto.BatchWriteResponse{Cnt: count}, err
+		}
 
-func (ss *StorageServer) WriteFiles(ctx context.Context, req *proto.BatchWriteRequest) (*proto.BatchWriteResponse, error) {
-	writeBatch := grocksdb.NewWriteBatch()
-	defer writeBatch.Destroy()
+		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+			log.Printf("Storage: Create directory failed: %v\n", err)
+			return &proto.BatchWriteResponse{Cnt: count}, err
+		}
 
-	for _, entry := range req.Entries {
-		key := []byte(entry.VideoId + "/" + entry.Filename)
-		writeBatch.Put(key, entry.Data)
+		if err := os.WriteFile(filePath, entry.Data, 0644); err != nil {
+			log.Printf("Storage: Write file failed: %v\n", err)
+			return &proto.BatchWriteResponse{Cnt: count}, err
+		}
+		count++
 	}
 
-	wo := grocksdb.NewDefaultWriteOptions()
-	wo.SetSync(true)
-	defer wo.Destroy()
-
-	err := ss.db.Write(wo, writeBatch)
-	if err != nil {
-		log.Printf("Storage: Batch write failed: %v\n", err)
-		return &proto.BatchWriteResponse{}, err
-	}
-
-	return &proto.BatchWriteResponse{}, nil
+	return &proto.BatchWriteResponse{Cnt: count}, nil
 }
 
+// ReadFile reads a single file from the server's storage directory.
 func (ss *StorageServer) ReadFile(ctx context.Context, req *proto.ReadRequest) (*proto.ReadResponse, error) {
-	// Read file content from RocksDB, used videoId + filename as key and data as value
-	ro := grocksdb.NewDefaultReadOptions()
-	defer ro.Destroy()
-	value, err := ss.db.Get(ro, []byte(req.VideoId+"/"+req.Filename))
-	data := append([]byte{}, value.Data()...)
-	defer value.Free()
+	filePath, err := ss.filePath(req.VideoId, req.Filename)
+	if err != nil {
+		return &proto.ReadResponse{Data: nil}, err
+	}
+
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Printf("Storage: Read file failed: %v\n", err)
 		return &proto.ReadResponse{Data: nil}, err
 	}
+
 	return &proto.ReadResponse{Data: data}, nil
 }
 
+// ReadFiles reads every regular file under the server's storage directory.
 func (ss *StorageServer) ReadFiles(ctx context.Context, req *proto.BatchReadRequest) (*proto.BatchReadResponse, error) {
-
-	ro := grocksdb.NewDefaultReadOptions()
-	it := ss.db.NewIterator(ro)
-	defer it.Close()
-
 	entries := make([]*proto.FileEntry, 0)
 
-	for it.SeekToFirst(); it.Valid(); it.Next() {
-		key := string(it.Key().Data())
-		parts := strings.SplitN(key, "/", 2)
-		if len(parts) == 2 {
-			value := append([]byte{}, it.Value().Data()...)
-
-			entry := &proto.FileEntry{
-				VideoId:  parts[0],
-				Filename: parts[1],
-				Data:     value,
-			}
-			entries = append(entries, entry)
+	err := filepath.WalkDir(ss.basePath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-		it.Key().Free()
-	}
-	fmt.Printf("ListFile: Found %d files\n", len(entries))
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
 
-	return &proto.BatchReadResponse{
-		Entries: entries,
-	}, nil
+		relativePath, err := filepath.Rel(ss.basePath, path)
+		if err != nil {
+			return err
+		}
+		parts := splitStoredPath(relativePath)
+		if len(parts) != 2 {
+			log.Printf("Storage: Skipping file outside a video directory: %s\n", path)
+			return nil
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %q: %w", path, err)
+		}
+
+		entries = append(entries, &proto.FileEntry{
+			VideoId:  parts[0],
+			Filename: parts[1],
+			Data:     data,
+		})
+		return nil
+	})
+	
+	if err != nil {
+		log.Printf("Storage: Read files failed: %v\n", err)
+		return &proto.BatchReadResponse{Entries: entries}, err
+	}
+
+	log.Printf("Storage: Found %d files\n", len(entries))
+	return &proto.BatchReadResponse{Entries: entries}, nil
 }
 
 func (ss *StorageServer) SendFiles(ctx context.Context, req *proto.BatchSendRequest) (*proto.SendResponse, error) {
@@ -151,44 +158,82 @@ func (ss *StorageServer) SendFiles(ctx context.Context, req *proto.BatchSendRequ
 
 	client := proto.NewVideoContentStorageServiceClient(conn)
 
-	// Build the whole batch once
-	writeReq := &proto.BatchWriteRequest{
-		Entries: make([]*proto.FileEntry, 0, len(req.Entries)),
+	files, err := ss.ReadFiles(ctx, &proto.BatchReadRequest{})
+	if err != nil {
+		return &proto.SendResponse{}, err
+	}
+	if len(files.Entries) == 0 {
+		return &proto.SendResponse{}, nil
 	}
 
-	for _, entry := range req.Entries {
-		writeReq.Entries = append(writeReq.Entries, &proto.FileEntry{
-			VideoId:  entry.VideoId,
-			Filename: entry.Filename,
-			Data:     entry.Data,
-		})
-	}
-
-	// Send once
-	_, err = client.WriteFiles(context.Background(), writeReq)
+	response, err := client.WriteFiles(ctx, &proto.BatchWriteRequest{Entries: files.Entries})
 	if err != nil {
 		log.Printf("WriteFiles RPC failed: %v", err)
 		return &proto.SendResponse{}, err
 	}
+	if response.Cnt != uint32(len(files.Entries)) {
+		return &proto.SendResponse{}, fmt.Errorf(
+			"destination wrote %d of %d files",
+			response.Cnt,
+			len(files.Entries),
+		)
+	}
 
-	// Delete only after successful transfer
-	for _, entry := range req.Entries {
-		wo := grocksdb.NewDefaultWriteOptions()
-		wo.SetSync(false)
-		err = ss.db.Delete(wo, []byte(entry.VideoId+"/"+entry.Filename))
-		wo.Destroy()
+	// Delete local files only after the destination confirms the entire batch.
+	for _, entry := range files.Entries {
+		filePath, err := ss.filePath(entry.VideoId, entry.Filename)
 		if err != nil {
-			log.Printf("Delete failed: %v", err)
 			return &proto.SendResponse{}, err
 		}
+		if err := os.Remove(filePath); err != nil {
+			return &proto.SendResponse{}, fmt.Errorf("remove %q: %w", filePath, err)
+		}
+
+		// Remove the video directory if it is now empty. Keep the base directory.
+		if err := os.Remove(filepath.Dir(filePath)); err != nil && !isDirectoryNotEmpty(err) {
+			return &proto.SendResponse{}, fmt.Errorf("remove empty directory %q: %w", filepath.Dir(filePath), err)
+		}
 	}
-	
+
 	return &proto.SendResponse{}, nil
+}
+
+func (ss *StorageServer) filePath(videoID, filename string) (string, error) {
+	if videoID == "" || filename == "" {
+		return "", fmt.Errorf("video ID and filename must not be empty")
+	}
+
+	basePath, err := filepath.Abs(ss.basePath)
+	if err != nil {
+		return "", err
+	}
+	filePath := filepath.Join(basePath, videoID, filename)
+	relativePath, err := filepath.Rel(basePath, filePath)
+	if err != nil {
+		return "", err
+	}
+	if relativePath == ".." || len(relativePath) >= 3 && relativePath[:3] == ".."+string(filepath.Separator) {
+		return "", fmt.Errorf("file path escapes storage directory")
+	}
+
+	return filePath, nil
+}
+
+func splitStoredPath(path string) []string {
+	for i, char := range path {
+		if char == filepath.Separator {
+			return []string{path[:i], path[i+1:]}
+		}
+	}
+	return nil
+}
+
+func isDirectoryNotEmpty(err error) bool {
+	return errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST)
 }
 
 func (ss *StorageServer) Shutdown(ctx context.Context, req *proto.ShutdownRequest) (*proto.ShutdownResponse, error) {
 	fmt.Println("Received shutdown request. Stopping server...")
-	ss.db.Close()
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		ss.grpcServer.GracefulStop()

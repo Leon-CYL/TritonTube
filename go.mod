@@ -3,7 +3,6 @@ module tritontube
 go 1.24.1
 
 require (
-	github.com/linxGnu/grocksdb v1.10.1
 	go.etcd.io/etcd/client/v3 v3.6.0
 	google.golang.org/grpc v1.72.0
 	google.golang.org/protobuf v1.36.5
