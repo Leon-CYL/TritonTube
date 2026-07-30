@@ -3,6 +3,7 @@
 package web
 
 import (
+	"fmt"
 	"html/template"
 	"io"
 	"log"
@@ -184,49 +185,73 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fileCount := 0
-	totalWriteTime := time.Duration(0)
+	expectedCount := 0
+	var uploadErr error
+	var mutex sync.Mutex
 	var wg sync.WaitGroup
 	maxWorkers := 64
 	sem := make(chan struct{}, maxWorkers)
 	start := time.Now()
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			wg.Add(1)
-			sem <- struct{}{}
-			go func(entry os.DirEntry) {
-				defer wg.Done()
-				defer func() { <-sem }()
-				if !entry.IsDir() {
-					fileName := entry.Name()
-					filePath := filepath.Join(dashDir, fileName)
-
-					data, err := os.ReadFile(filePath)
-					if err != nil {
-						log.Println(w, "Error reading DASH file: "+fileName, http.StatusInternalServerError)
-						return
-					}
-
-					if err := s.contentService.Write(videoId, fileName, data); err != nil {
-						log.Println(w, "Error storing DASH file: "+fileName, http.StatusInternalServerError)
-						return
-					}
-
-					fileCount++
-				}
-			}(entry)
+		if entry.IsDir() {
+			continue
 		}
+
+		expectedCount++
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(entry os.DirEntry) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			fileName := entry.Name()
+			filePath := filepath.Join(dashDir, fileName)
+
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				mutex.Lock()
+				if uploadErr == nil {
+					uploadErr = fmt.Errorf("read DASH file %s: %w", fileName, err)
+				}
+				mutex.Unlock()
+				return
+			}
+
+			if err := s.contentService.Write(videoId, fileName, data); err != nil {
+				mutex.Lock()
+				if uploadErr == nil {
+					uploadErr = fmt.Errorf("store DASH file %s: %w", fileName, err)
+				}
+				mutex.Unlock()
+				return
+			}
+
+			mutex.Lock()
+			fileCount++
+			mutex.Unlock()
+		}(entry)
 	}
 	wg.Wait()
 
-	// Storage Node write performance metrics
-	totalWriteTime = time.Since(start)
-	log.Printf("Uploaded %d DASH files for %s in %s", fileCount, videoId, totalWriteTime)
-	if fileCount > 0 {
-		avg := totalWriteTime / time.Duration(fileCount)
-		log.Printf("Average write time per file: %s", avg)
+	if uploadErr != nil {
+		log.Printf("DASH upload failed after storing %d/%d files: %v", fileCount, expectedCount, uploadErr)
+		http.Error(w, "Failed to store DASH files", http.StatusInternalServerError)
+		return
+	}
+	if expectedCount == 0 {
+		http.Error(w, "No DASH files were generated", http.StatusInternalServerError)
+		return
+	}
+	if fileCount != expectedCount {
+		log.Printf("Only %d/%d files were written to storage", fileCount, expectedCount)
+		http.Error(w, "Failed to store all DASH files", http.StatusInternalServerError)
+		return
 	}
 
+	// Storage Node write performance metrics
+	totalWriteTime := time.Since(start)
+	log.Printf("Stored %d DASH files for %s in %s total batch time", fileCount, videoId, totalWriteTime)
 
 	err = s.metadataService.Create(videoId, time.Now())
 	if err != nil {
