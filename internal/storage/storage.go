@@ -15,7 +15,6 @@ import (
 	"tritontube/internal/proto"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Implement a network video content service (server)
@@ -138,7 +137,7 @@ func (ss *StorageServer) ReadFiles(ctx context.Context, req *proto.BatchReadRequ
 		})
 		return nil
 	})
-	
+
 	if err != nil {
 		log.Printf("Storage: Read files failed: %v\n", err)
 		return &proto.BatchReadResponse{Entries: entries}, err
@@ -146,56 +145,6 @@ func (ss *StorageServer) ReadFiles(ctx context.Context, req *proto.BatchReadRequ
 
 	log.Printf("Storage: Found %d files\n", len(entries))
 	return &proto.BatchReadResponse{Entries: entries}, nil
-}
-
-func (ss *StorageServer) SendFiles(ctx context.Context, req *proto.BatchSendRequest) (*proto.SendResponse, error) {
-	conn, err := grpc.NewClient(req.PeerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Printf("Failed to connect to server: %v", err)
-		return &proto.SendResponse{}, err
-	}
-	defer conn.Close()
-
-	client := proto.NewVideoContentStorageServiceClient(conn)
-
-	files, err := ss.ReadFiles(ctx, &proto.BatchReadRequest{})
-	if err != nil {
-		return &proto.SendResponse{}, err
-	}
-	if len(files.Entries) == 0 {
-		return &proto.SendResponse{}, nil
-	}
-
-	response, err := client.WriteFiles(ctx, &proto.BatchWriteRequest{Entries: files.Entries})
-	if err != nil {
-		log.Printf("WriteFiles RPC failed: %v", err)
-		return &proto.SendResponse{}, err
-	}
-	if response.Cnt != uint32(len(files.Entries)) {
-		return &proto.SendResponse{}, fmt.Errorf(
-			"destination wrote %d of %d files",
-			response.Cnt,
-			len(files.Entries),
-		)
-	}
-
-	// Delete local files only after the destination confirms the entire batch.
-	for _, entry := range files.Entries {
-		filePath, err := ss.filePath(entry.VideoId, entry.Filename)
-		if err != nil {
-			return &proto.SendResponse{}, err
-		}
-		if err := os.Remove(filePath); err != nil {
-			return &proto.SendResponse{}, fmt.Errorf("remove %q: %w", filePath, err)
-		}
-
-		// Remove the video directory if it is now empty. Keep the base directory.
-		if err := os.Remove(filepath.Dir(filePath)); err != nil && !isDirectoryNotEmpty(err) {
-			return &proto.SendResponse{}, fmt.Errorf("remove empty directory %q: %w", filepath.Dir(filePath), err)
-		}
-	}
-
-	return &proto.SendResponse{}, nil
 }
 
 func (ss *StorageServer) filePath(videoID, filename string) (string, error) {

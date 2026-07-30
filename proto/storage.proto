@@ -9,7 +9,6 @@ service VideoContentStorageService {
     rpc WriteFiles(BatchWriteRequest) returns (BatchWriteResponse);
     rpc ReadFile(ReadRequest) returns (ReadResponse);
     rpc ReadFiles(BatchReadRequest) returns (BatchReadResponse);
-    rpc SendFiles(BatchSendRequest) returns (SendResponse);
     rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
 }
 
@@ -49,12 +48,6 @@ message BatchReadRequest {}
 message BatchReadResponse {
     repeated FileEntry entries = 1;
 }
-
-message BatchSendRequest {
-  string peerAddr = 1;
-}
-
-message SendResponse {}
 
 message ShutdownRequest {}
 

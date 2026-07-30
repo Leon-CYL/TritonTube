@@ -1,4 +1,4 @@
-// Lab 8: Implement a network video content service (client using consistent hashing)
+// nw.go
 
 package web
 
@@ -78,19 +78,13 @@ func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]b
 
 	storageAddr := ns.FindStorageAddr(filepath)
 	if storageAddr == "" {
-		log.Fatalf("No valid storage address found for: %s", filepath)
+		return nil, fmt.Errorf("no valid storage address found for %s", filepath)
 	}
 	conn, err := grpc.NewClient(
 		storageAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64*1024*1024),
-			grpc.MaxCallSendMsgSize(64*1024*1024),
-		),
 	)
-
 	if err != nil {
-		log.Fatalf("Failed to connect to server: %v", err)
 		return nil, err
 	}
 	defer conn.Close()
@@ -101,9 +95,7 @@ func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]b
 		VideoId:  videoId,
 		Filename: filename,
 	})
-
 	if err != nil {
-		log.Fatalf("ReadFile RPC failed: %v", err)
 		return nil, err
 	}
 
@@ -114,18 +106,13 @@ func (ns *NetworkVideoContentService) Write(videoId string, filename string, dat
 	filepath := videoId + "/" + filename
 	storageAddr := ns.FindStorageAddr(filepath)
 	if storageAddr == "" {
-		log.Fatalf("No valid storage address found for: %s", filepath)
+		return fmt.Errorf("no valid storage address found for %s", filepath)
 	}
 	conn, err := grpc.NewClient(
 		storageAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64*1024*1024),
-			grpc.MaxCallSendMsgSize(64*1024*1024),
-		),
 	)
 	if err != nil {
-		log.Fatalf("Failed to connect to server: %v", err)
 		return err
 	}
 	defer conn.Close()
@@ -140,7 +127,6 @@ func (ns *NetworkVideoContentService) Write(videoId string, filename string, dat
 
 	_, err = client.WriteFile(context.Background(), req)
 	if err != nil {
-		log.Fatalf("WriteFile RPC failed: %v", err)
 		return err
 	}
 
@@ -154,10 +140,7 @@ func (ns *NetworkVideoContentService) InitStorageServer(serverAddr string) error
 
 	// start the new node server
 
-	grpcServer := grpc.NewServer(
-		grpc.MaxRecvMsgSize(64*1024*1024),
-		grpc.MaxSendMsgSize(64*1024*1024),
-	)
+	grpcServer := grpc.NewServer()
 
 	server := storage.NewStorageServer(baseDir, grpcServer)
 
@@ -170,7 +153,6 @@ func (ns *NetworkVideoContentService) InitStorageServer(serverAddr string) error
 
 	lis, err := net.Listen("tcp", serverAddr)
 	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
 		return err
 	}
 
@@ -186,82 +168,118 @@ func (ns *NetworkVideoContentService) InitStorageServer(serverAddr string) error
 }
 
 func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.AddNodeRequest) (*proto.AddNodeResponse, error) {
+	newNodeId := HashStringToUint64(req.NodeAddress)
+	if _, exists := ns.storageServers[newNodeId]; exists {
+		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("storage node already exists: %s", req.NodeAddress)
+	}
+
+	peerAddr := ns.FindStorageAddr(req.NodeAddress)
 
 	// Start new storage server
 	if err := ns.InitStorageServer(req.NodeAddress); err != nil {
 		return &proto.AddNodeResponse{MigratedFileCount: 0}, err
 	}
 
-	newNodeId := HashStringToUint64(req.NodeAddress)
-	peerAddr := ns.FindStorageAddr(req.NodeAddress)
-
 	// Update internal tracking before migrating files
 	ns.storageServers[newNodeId] = req.NodeAddress
 	ns.storageIds = append(ns.storageIds, newNodeId)
 	sort.Slice(ns.storageIds, func(i, j int) bool { return ns.storageIds[i] < ns.storageIds[j] })
 
-	conn, err := grpc.NewClient(
+	// The first node has no existing peer to migrate files from.
+	if peerAddr == "" {
+		return &proto.AddNodeResponse{MigratedFileCount: 0}, nil
+	}
+
+	// Init source client
+	sourceConn, err := grpc.NewClient(
 		peerAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64*1024*1024),
-			grpc.MaxCallSendMsgSize(64*1024*1024),
-		),
 	)
 	if err != nil {
-		log.Printf("Failed to connect to node %s: %v", peerAddr, err)
+		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("connect to source node %s: %w", peerAddr, err)
 	}
-	defer conn.Close()
+	defer sourceConn.Close()
 
-	client := proto.NewVideoContentStorageServiceClient(conn)
+	srcClient := proto.NewVideoContentStorageServiceClient(sourceConn)
 
-	batchReadRes, err := client.ReadFiles(context.Background(), &proto.BatchReadRequest{})
-	if err != nil || batchReadRes == nil {
-		log.Printf("Failed to list files from node %s: %v", peerAddr, err)
+	// Init destination client
+	destinationConn, err := grpc.NewClient(
+		req.NodeAddress,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("connect to destination node %s: %w", req.NodeAddress, err)
+	}
+	defer destinationConn.Close()
+
+	destClient := proto.NewVideoContentStorageServiceClient(destinationConn)
+
+	// Transfer Files
+	batchReadRes, err := srcClient.ReadFiles(ctx, &proto.BatchReadRequest{})
+	if err != nil {
+		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("read files from source node %s: %w", peerAddr, err)
+	}
+	if batchReadRes == nil {
+		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("source node %s returned an empty response", peerAddr)
 	}
 	fmt.Printf("Number of files in Node %v: %v\n", peerAddr, len(batchReadRes.Entries))
 
 	count := 0
-	batchSendReq := &proto.BatchSendRequest{
-		PeerAddr: req.NodeAddress,
-		Entries:  make([]*proto.FileEntry, 0, len(batchReadRes.Entries)),
+	batchWriteRequest := &proto.BatchWriteRequest{
+		Entries: make([]*proto.FileEntry, 0),
 	}
 
-	start := time.Now()
 	for i := 0; i < len(batchReadRes.Entries); i++ {
 		filePath := batchReadRes.Entries[i].VideoId + "/" + batchReadRes.Entries[i].Filename
 
-		// Determine new node assignment
+		// Determine file assignment to new node base on location on the hash ring
 		target := ns.FindStorageAddr(filePath)
 		if target == req.NodeAddress {
-
-			batchSendReq.Entries = append(batchSendReq.Entries, &proto.FileEntry{
+			batchWriteRequest.Entries = append(batchWriteRequest.Entries, &proto.FileEntry{
 				VideoId:  batchReadRes.Entries[i].VideoId,
 				Filename: batchReadRes.Entries[i].Filename,
 				Data:     batchReadRes.Entries[i].Data,
 			})
-
 			count++
 		}
 	}
 
-	_, err = client.SendFiles(context.Background(), batchSendReq)
+	start := time.Now()
+
+	writeResponse, err := destClient.WriteFiles(ctx, batchWriteRequest)
 	if err != nil {
 		log.Printf("Failed to send files: %v\n", err)
-		return &proto.AddNodeResponse{MigratedFileCount: int32(count)}, err
+		return &proto.AddNodeResponse{MigratedFileCount: 0}, err
+	}
+	if writeResponse.Cnt != uint32(count) {
+		return &proto.AddNodeResponse{MigratedFileCount: int32(writeResponse.Cnt)}, fmt.Errorf(
+			"destination wrote %d of %d files",
+			writeResponse.Cnt,
+			count,
+		)
 	}
 
 	end := time.Since(start)
-	log.Printf("Added %d files to Node %s\n", count, req.NodeAddress)
 
+	log.Printf("Added %d files to Node %s\n", count, req.NodeAddress)
 	log.Printf("AddNode: Time taken to migrate files: %s\n", end)
-	log.Printf("AddNode: Average time per file: %s\n", end/time.Duration(count))
+	if count > 0 {
+		log.Printf("AddNode: Average time per file: %s\n", end/time.Duration(count))
+	}
 
 	return &proto.AddNodeResponse{MigratedFileCount: int32(count)}, nil
 }
 
 func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto.RemoveNodeRequest) (*proto.RemoveNodeResponse, error) {
+	if len(ns.storageIds) <= 1 {
+		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, errors.New("cannot remove the last storage node")
+	}
+
 	removeNodeId := HashStringToUint64(req.NodeAddress)
+	if _, exists := ns.storageServers[removeNodeId]; !exists {
+		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, fmt.Errorf("storage node does not exist: %s", req.NodeAddress)
+	}
+
 	nodeId := ns.storageIds[0]
 
 	for _, id := range ns.storageIds {
@@ -273,49 +291,75 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 
 	peerAddr := ns.storageServers[nodeId]
 
-	// connect the removed server
-	conn, err := grpc.NewClient(
+	// connect the source(removed) server
+	sourceConn, err := grpc.NewClient(
 		req.NodeAddress,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64*1024*1024),
-			grpc.MaxCallSendMsgSize(64*1024*1024),
-		),
 	)
-
 	if err != nil {
-		log.Fatalf("Failed to connect to server: %v", err)
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
 	}
-	defer conn.Close()
+	defer sourceConn.Close()
 
-	client := proto.NewVideoContentStorageServiceClient(conn)
+	srcClient := proto.NewVideoContentStorageServiceClient(sourceConn)
+
+	// connect the destination server
+	destinationConn, err := grpc.NewClient(
+		peerAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
+	}
+	defer destinationConn.Close()
+
+	dstClient := proto.NewVideoContentStorageServiceClient(destinationConn)
 
 	// Assign files from the removed server to the neighbor server based on consistant hashing
-	response, err := client.ReadFiles(context.Background(), &proto.BatchReadRequest{})
+	response, err := srcClient.ReadFiles(ctx, &proto.BatchReadRequest{})
 	if err != nil {
-		log.Printf("ListFile RPC failed: %v\n", err)
+		log.Printf("ReadFile RPC failed: %v\n", err)
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
 	}
 
 	fmt.Printf("Number of files: %v\n", len(response.Entries))
 
-	batchSendReq := &proto.BatchSendRequest{
-		PeerAddr: peerAddr,
-		Entries:  response.Entries,
+	batchWriteRequest := &proto.BatchWriteRequest{
+		Entries: response.Entries,
 	}
 
 	start := time.Now()
 
-	_, err = client.SendFiles(context.Background(), batchSendReq)
+	writeResponse, err := dstClient.WriteFiles(ctx, batchWriteRequest)
 	if err != nil {
 		log.Printf("Failed to send files: %v\n", err)
-		return &proto.RemoveNodeResponse{MigratedFileCount: int32(len(response.Entries))}, err
+		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
+	}
+	if writeResponse.Cnt != uint32(len(response.Entries)) {
+		return &proto.RemoveNodeResponse{MigratedFileCount: int32(writeResponse.Cnt)}, fmt.Errorf(
+			"destination wrote %d of %d files",
+			writeResponse.Cnt,
+			len(response.Entries),
+		)
 	}
 
 	end := time.Since(start)
+
 	log.Printf("RemoveNode: Time taken to migrate files: %s\n", end)
-	log.Printf("RemoveNode: Average time per file: %s\n", end/time.Duration(len(response.Entries)))
+	if len(response.Entries) > 0 {
+		log.Printf("RemoveNode: Average time per file: %s\n", end/time.Duration(len(response.Entries)))
+	}
+
+	// shut down server
+	if srv, ok := ns.serverInstances[req.NodeAddress]; ok {
+		log.Printf("Gracefully stopping server at %s\n", req.NodeAddress)
+		srv.GracefulStop()
+	} else {
+		// Fall back: issue a Shutdown RPC to remote server directly
+		if _, err := srcClient.Shutdown(ctx, &proto.ShutdownRequest{}); err != nil {
+			return &proto.RemoveNodeResponse{MigratedFileCount: int32(len(response.Entries))}, err
+		}
+	}
 
 	for i, id := range ns.storageIds {
 		if id == removeNodeId {
@@ -323,16 +367,7 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 		}
 	}
 	delete(ns.storageServers, removeNodeId)
-
-	// shut down server
-	if srv, ok := ns.serverInstances[req.NodeAddress]; ok {
-		log.Printf("Gracefully stopping server at %s\n", req.NodeAddress)
-		srv.GracefulStop()
-		delete(ns.serverInstances, req.NodeAddress)
-	} else {
-		// Fall back: issue a Shutdown RPC to remote server directly
-		client.Shutdown(context.Background(), &proto.ShutdownRequest{})
-	}
+	delete(ns.serverInstances, req.NodeAddress)
 
 	return &proto.RemoveNodeResponse{MigratedFileCount: int32(len(response.Entries))}, nil
 }
