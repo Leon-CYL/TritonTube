@@ -57,7 +57,7 @@ func TestHashRingDeterministicPlacement(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				if got := ring.FindStorageAddr(tt.key); got != tt.want {
 					t.Fatalf("FindStorageAddr(%q) = %q, want %q", tt.key, got, tt.want)
 				}
