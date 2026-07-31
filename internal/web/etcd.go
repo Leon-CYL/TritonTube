@@ -38,7 +38,6 @@ func (es *EtcdVideoMetadataService) Read(videoId string) (*VideoMetadata, error)
 	defer cancel()
 	res, err := es.etcdClient.Get(ctx, videoId)
 
-
 	if err != nil {
 		fmt.Printf("Read Error: %v\n", err)
 		return nil, err

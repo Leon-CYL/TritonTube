@@ -3,11 +3,9 @@ package web
 import "time"
 
 type VideoMetadata struct {
-    Id    string    `json:"video_id"`
-    UploadedAt time.Time `json:"uploaded_at"`
+	Id         string    `json:"video_id"`
+	UploadedAt time.Time `json:"uploaded_at"`
 }
-
-
 
 type VideoMetadataService interface {
 	Read(id string) (*VideoMetadata, error)
