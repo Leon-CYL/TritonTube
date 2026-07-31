@@ -4,9 +4,7 @@
 ![Core coverage](https://img.shields.io/badge/core%20coverage-43.0%25-yellow)
 [![Go](https://img.shields.io/badge/Go-1.24.1-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 
-TritonTube is a distributed video-streaming project written in Go. It accepts video uploads, uses FFmpeg to produce MPEG-DASH manifests and segments, stores video content across filesystem-backed gRPC storage nodes, and keeps video metadata in etcd.
-
-The project is currently focused on correctness, automated testing, and safe storage-node membership changes.
+TritonTube is a distributed video-streaming project written in Go. It accepts video uploads, uses FFmpeg to produce MPEG-DASH manifests and segments, stores video content across filesystem-backed gRPC storage nodes and keeps video metadata in etcd.
 
 ## Architecture
 
@@ -14,7 +12,19 @@ The project is currently focused on correctness, automated testing, and safe sto
 flowchart LR
     U["Browser / HTTP client"] --> W["Web service"]
     W --> F["FFmpeg"]
-    W --> E["etcd metadata cluster"]
+
+    subgraph E["etcd metadata cluster (3 members)"]
+        E1["etcd node 1"]
+        E2["etcd node 2"]
+        E3["etcd node 3"]
+        E1 <--> E2
+        E2 <--> E3
+        E3 <--> E1
+    end
+
+    W --> E1
+    W --> E2
+    W --> E3
     W --> H["Consistent-hash ring"]
     H --> S1["Storage node A"]
     H --> S2["Storage node B"]
@@ -37,16 +47,15 @@ The web service hashes each `videoID/filename` key and selects the first storage
 - Concurrent upload workers with partial-failure handling
 - Race-safe membership reads and updates
 - Unit and in-process gRPC tests
-- GitHub Actions checks for formatting, vet, tests, race detection, and coverage
 
-## Current limitations
+<!-- ## Current limitations
 
 - The hash ring currently uses one point per storage server; virtual nodes are not implemented.
 - Each video file has one authoritative owner. Storage replication and automatic failover are not implemented.
 - Adding a node copies reassigned files but does not selectively delete the old source copies.
 - Upload processing is synchronous; the HTTP request remains open during transcoding and storage.
 - The web service supports etcd metadata and network storage only.
-- Transport security and authentication are not implemented.
+- Transport security and authentication are not implemented. -->
 
 ## Requirements
 
@@ -82,15 +91,58 @@ make test
 
 ### 2. Start etcd
 
-For local development, start a single etcd node:
+Start a three-member etcd cluster. Run each member in a separate terminal from
+the project root.
+
+etcd node 1:
 
 ```bash
 etcd \
-  --name tritontube-etcd \
-  --data-dir ./data/etcd \
-  --listen-client-urls http://localhost:2379 \
-  --advertise-client-urls http://localhost:2379
+  --name node1 \
+  --data-dir ./data1 \
+  --initial-advertise-peer-urls http://localhost:2380 \
+  --listen-peer-urls http://localhost:2380 \
+  --listen-client-urls http://localhost:8093 \
+  --advertise-client-urls http://localhost:8093 \
+  --initial-cluster-token etcd-cluster-1 \
+  --initial-cluster node1=http://localhost:2380,node2=http://localhost:2381,node3=http://localhost:2382 \
+  --initial-cluster-state new
 ```
+
+etcd node 2:
+
+```bash
+etcd \
+  --name node2 \
+  --data-dir ./data2 \
+  --initial-advertise-peer-urls http://localhost:2381 \
+  --listen-peer-urls http://localhost:2381 \
+  --listen-client-urls http://localhost:8094 \
+  --advertise-client-urls http://localhost:8094 \
+  --initial-cluster-token etcd-cluster-1 \
+  --initial-cluster node1=http://localhost:2380,node2=http://localhost:2381,node3=http://localhost:2382 \
+  --initial-cluster-state new
+```
+
+etcd node 3:
+
+```bash
+etcd \
+  --name node3 \
+  --data-dir ./data3 \
+  --initial-advertise-peer-urls http://localhost:2382 \
+  --listen-peer-urls http://localhost:2382 \
+  --listen-client-urls http://localhost:8095 \
+  --advertise-client-urls http://localhost:8095 \
+  --initial-cluster-token etcd-cluster-1 \
+  --initial-cluster node1=http://localhost:2380,node2=http://localhost:2381,node3=http://localhost:2382 \
+  --initial-cluster-state new
+```
+
+This local cluster demonstrates etcd quorum and tolerance of one member-process
+failure. Because all members run on the same machine, it does not provide
+machine-level high availability. Production members should run in separate
+failure domains.
 
 ### 3. Start storage nodes
 
@@ -116,7 +168,7 @@ The first network address is the admin gRPC listener. The remaining addresses ar
 go run ./cmd/web \
   --host localhost \
   --port 8080 \
-  etcd "localhost:2379" \
+  etcd "localhost:8093,localhost:8094,localhost:8095" \
   nw "localhost:3343,localhost:8090,localhost:8091,localhost:8092"
 ```
 
@@ -131,22 +183,13 @@ Use the admin CLI against the admin gRPC address:
 go run ./cmd/admin list localhost:3343
 
 # Add a storage node
-go run ./cmd/admin add localhost:3343 localhost:8093
+go run ./cmd/admin add localhost:3343 localhost:8096
 
 # Remove a storage node
-go run ./cmd/admin remove localhost:3343 localhost:8093
+go run ./cmd/admin remove localhost:3343 localhost:8096
 ```
-
-The current `AddNode` implementation starts the new storage server inside the web-service process. Removing the final storage node is rejected.
 
 ## Development
-
-### Formatting and static analysis
-
-```bash
-find . -type f -name '*.go' -exec gofmt -w {} +
-make vet
-```
 
 ### Tests
 
@@ -169,23 +212,6 @@ Generate the whole-module coverage report:
 ```bash
 make coverage
 ```
-
-Generate an interactive HTML report:
-
-```bash
-make coverage-html
-```
-
-Core-package coverage, which excludes command entrypoints and generated protobuf files:
-
-```bash
-go test \
-  -coverprofile=coverage.out \
-  ./internal/storage ./internal/web
-go tool cover -func=coverage.out
-```
-
-The badge at the top of this README reflects the current core-package statement coverage. CI uploads `coverage.out` as a workflow artifact.
 
 ### Protobuf generation
 
