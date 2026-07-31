@@ -196,33 +196,3 @@ make proto
 ```
 
 Generated files are written to [`internal/proto/`](internal/proto/).
-
-## Project layout
-
-```text
-.
-├── cmd/
-│   ├── admin/          # Storage membership CLI
-│   ├── storage/        # Storage-node process
-│   └── web/            # HTTP and admin-service process
-├── internal/
-│   ├── proto/          # Generated protobuf and gRPC code
-│   ├── storage/        # Filesystem storage service and tests
-│   └── web/            # HTTP, etcd, hash ring, and migration logic
-├── proto/              # Protobuf service definitions
-├── .github/workflows/  # Continuous integration
-├── Makefile
-└── go.mod
-```
-
-## Continuous integration
-
-The GitHub Actions workflow runs on pushes, pull requests, and manual dispatches. It verifies:
-
-1. `gofmt`
-2. `go vet ./...`
-3. `go test ./...`
-4. `go test -race ./...`
-5. Core-package coverage generation
-
-The coverage profile is retained as a workflow artifact for 14 days.
