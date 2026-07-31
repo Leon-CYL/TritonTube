@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"sort"
+	"sync"
 	"time"
 	"tritontube/internal/proto"
 	"tritontube/internal/storage"
@@ -22,10 +23,21 @@ import (
 // NetworkVideoContentService implements VideoContentService using a network of nodes.
 type NetworkVideoContentService struct {
 	proto.UnimplementedVideoContentAdminServiceServer
+	mu              sync.RWMutex
+	membershipMu    sync.Mutex
 	storageIds      []uint64
 	storageServers  map[uint64]string
 	serverInstances map[string]*grpc.Server
 	pendingWrites   map[string][]*proto.FileEntry
+
+	startStorageNode func(string) error
+	dialStorageNode  func(string) (storageRPCClient, func() error, error)
+}
+
+type storageRPCClient interface {
+	ReadFiles(context.Context, *proto.BatchReadRequest, ...grpc.CallOption) (*proto.BatchReadResponse, error)
+	WriteFiles(context.Context, *proto.BatchWriteRequest, ...grpc.CallOption) (*proto.BatchWriteResponse, error)
+	Shutdown(context.Context, *proto.ShutdownRequest, ...grpc.CallOption) (*proto.ShutdownResponse, error)
 }
 
 var _ VideoContentService = (*NetworkVideoContentService)(nil)
@@ -58,19 +70,10 @@ func HashStringToUint64(key string) uint64 {
 }
 
 func (ns *NetworkVideoContentService) FindStorageAddr(str string) string {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
 
-	if len(ns.storageServers) == 0 {
-		fmt.Printf("This server has 0 storage server available.\n")
-		return ""
-	}
-
-	objId := HashStringToUint64(str)
-	for _, id := range ns.storageIds {
-		if objId <= id {
-			return ns.storageServers[id]
-		}
-	}
-	return ns.storageServers[ns.storageIds[0]]
+	return findStorageAddr(str, ns.storageIds, ns.storageServers)
 }
 
 func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]byte, error) {
@@ -156,7 +159,9 @@ func (ns *NetworkVideoContentService) InitStorageServer(serverAddr string) error
 		return err
 	}
 
+	ns.mu.Lock()
 	ns.serverInstances[serverAddr] = grpcServer
+	ns.mu.Unlock()
 
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
@@ -168,53 +173,66 @@ func (ns *NetworkVideoContentService) InitStorageServer(serverAddr string) error
 }
 
 func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.AddNodeRequest) (*proto.AddNodeResponse, error) {
+	ns.membershipMu.Lock()
+	defer ns.membershipMu.Unlock()
+
+	if req.NodeAddress == "" {
+		return &proto.AddNodeResponse{}, errors.New("storage node address must not be empty")
+	}
+
 	newNodeId := HashStringToUint64(req.NodeAddress)
-	if _, exists := ns.storageServers[newNodeId]; exists {
+	ns.mu.RLock()
+	_, exists := ns.storageServers[newNodeId]
+	currentIDs := append([]uint64(nil), ns.storageIds...)
+	currentServers := cloneStorageServers(ns.storageServers)
+	ns.mu.RUnlock()
+
+	if exists {
 		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("storage node already exists: %s", req.NodeAddress)
 	}
 
-	peerAddr := ns.FindStorageAddr(req.NodeAddress)
+	peerAddr := findStorageAddr(req.NodeAddress, currentIDs, currentServers)
+	proposedIDs := append([]uint64(nil), currentIDs...)
+	proposedIDs = append(proposedIDs, newNodeId)
+	sort.Slice(proposedIDs, func(i, j int) bool { return proposedIDs[i] < proposedIDs[j] })
+
+	proposedServers := cloneStorageServers(currentServers)
+	proposedServers[newNodeId] = req.NodeAddress
 
 	// Start new storage server
-	if err := ns.InitStorageServer(req.NodeAddress); err != nil {
+	if err := ns.startNode(req.NodeAddress); err != nil {
 		return &proto.AddNodeResponse{MigratedFileCount: 0}, err
 	}
 
-	// Update internal tracking before migrating files
-	ns.storageServers[newNodeId] = req.NodeAddress
-	ns.storageIds = append(ns.storageIds, newNodeId)
-	sort.Slice(ns.storageIds, func(i, j int) bool { return ns.storageIds[i] < ns.storageIds[j] })
+	committed := false
+	defer func() {
+		if !committed {
+			ns.stopLocalNode(req.NodeAddress)
+		}
+	}()
 
 	// The first node has no existing peer to migrate files from.
 	if peerAddr == "" {
+		ns.mu.Lock()
+		ns.storageIds = proposedIDs
+		ns.storageServers = proposedServers
+		ns.mu.Unlock()
+		committed = true
 		return &proto.AddNodeResponse{MigratedFileCount: 0}, nil
 	}
 
-	// Init source client
-	sourceConn, err := grpc.NewClient(
-		peerAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	srcClient, closeSource, err := ns.dialNode(peerAddr)
 	if err != nil {
 		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("connect to source node %s: %w", peerAddr, err)
 	}
-	defer sourceConn.Close()
+	defer closeSource()
 
-	srcClient := proto.NewVideoContentStorageServiceClient(sourceConn)
-
-	// Init destination client
-	destinationConn, err := grpc.NewClient(
-		req.NodeAddress,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	destClient, closeDestination, err := ns.dialNode(req.NodeAddress)
 	if err != nil {
 		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("connect to destination node %s: %w", req.NodeAddress, err)
 	}
-	defer destinationConn.Close()
+	defer closeDestination()
 
-	destClient := proto.NewVideoContentStorageServiceClient(destinationConn)
-
-	// Transfer Files
 	batchReadRes, err := srcClient.ReadFiles(ctx, &proto.BatchReadRequest{})
 	if err != nil {
 		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("read files from source node %s: %w", peerAddr, err)
@@ -224,42 +242,52 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 	}
 	fmt.Printf("Number of files in Node %v: %v\n", peerAddr, len(batchReadRes.Entries))
 
-	count := 0
 	batchWriteRequest := &proto.BatchWriteRequest{
 		Entries: make([]*proto.FileEntry, 0),
 	}
 
-	for i := 0; i < len(batchReadRes.Entries); i++ {
-		filePath := batchReadRes.Entries[i].VideoId + "/" + batchReadRes.Entries[i].Filename
+	for _, entry := range batchReadRes.Entries {
+		filePath := entry.VideoId + "/" + entry.Filename
 
-		// Determine file assignment to new node base on location on the hash ring
-		target := ns.FindStorageAddr(filePath)
+		target := findStorageAddr(filePath, proposedIDs, proposedServers)
 		if target == req.NodeAddress {
 			batchWriteRequest.Entries = append(batchWriteRequest.Entries, &proto.FileEntry{
-				VideoId:  batchReadRes.Entries[i].VideoId,
-				Filename: batchReadRes.Entries[i].Filename,
-				Data:     batchReadRes.Entries[i].Data,
+				VideoId:  entry.VideoId,
+				Filename: entry.Filename,
+				Data:     entry.Data,
 			})
-			count++
 		}
 	}
 
+	count := len(batchWriteRequest.Entries)
 	start := time.Now()
 
-	writeResponse, err := destClient.WriteFiles(ctx, batchWriteRequest)
-	if err != nil {
-		log.Printf("Failed to send files: %v\n", err)
-		return &proto.AddNodeResponse{MigratedFileCount: 0}, err
-	}
-	if writeResponse.Cnt != uint32(count) {
-		return &proto.AddNodeResponse{MigratedFileCount: int32(writeResponse.Cnt)}, fmt.Errorf(
-			"destination wrote %d of %d files",
-			writeResponse.Cnt,
-			count,
-		)
+	if count > 0 {
+		writeResponse, err := destClient.WriteFiles(ctx, batchWriteRequest)
+		if err != nil {
+			log.Printf("Failed to send files: %v\n", err)
+			return &proto.AddNodeResponse{MigratedFileCount: 0}, err
+		}
+		if writeResponse == nil || writeResponse.Cnt != uint32(count) {
+			var written uint32
+			if writeResponse != nil {
+				written = writeResponse.Cnt
+			}
+			return &proto.AddNodeResponse{MigratedFileCount: int32(written)}, fmt.Errorf(
+				"destination wrote %d of %d files",
+				written,
+				count,
+			)
+		}
 	}
 
 	end := time.Since(start)
+
+	ns.mu.Lock()
+	ns.storageIds = proposedIDs
+	ns.storageServers = proposedServers
+	ns.mu.Unlock()
+	committed = true
 
 	log.Printf("Added %d files to Node %s\n", count, req.NodeAddress)
 	log.Printf("AddNode: Time taken to migrate files: %s\n", end)
@@ -271,55 +299,56 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 }
 
 func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto.RemoveNodeRequest) (*proto.RemoveNodeResponse, error) {
-	if len(ns.storageIds) <= 1 {
+	ns.membershipMu.Lock()
+	defer ns.membershipMu.Unlock()
+
+	ns.mu.RLock()
+	currentIDs := append([]uint64(nil), ns.storageIds...)
+	currentServers := cloneStorageServers(ns.storageServers)
+	ns.mu.RUnlock()
+
+	if len(currentIDs) <= 1 {
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, errors.New("cannot remove the last storage node")
 	}
 
 	removeNodeId := HashStringToUint64(req.NodeAddress)
-	if _, exists := ns.storageServers[removeNodeId]; !exists {
+	if _, exists := currentServers[removeNodeId]; !exists {
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, fmt.Errorf("storage node does not exist: %s", req.NodeAddress)
 	}
 
-	nodeId := ns.storageIds[0]
-
-	for _, id := range ns.storageIds {
-		if removeNodeId < id {
-			nodeId = id
-			break
+	proposedIDs := make([]uint64, 0, len(currentIDs)-1)
+	for _, id := range currentIDs {
+		if id != removeNodeId {
+			proposedIDs = append(proposedIDs, id)
 		}
 	}
+	proposedServers := cloneStorageServers(currentServers)
+	delete(proposedServers, removeNodeId)
 
-	peerAddr := ns.storageServers[nodeId]
+	peerAddr := findStorageAddr(req.NodeAddress, proposedIDs, proposedServers)
 
 	// connect the source(removed) server
-	sourceConn, err := grpc.NewClient(
-		req.NodeAddress,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	srcClient, closeSource, err := ns.dialNode(req.NodeAddress)
 	if err != nil {
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
 	}
-	defer sourceConn.Close()
-
-	srcClient := proto.NewVideoContentStorageServiceClient(sourceConn)
+	defer closeSource()
 
 	// connect the destination server
-	destinationConn, err := grpc.NewClient(
-		peerAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	dstClient, closeDestination, err := ns.dialNode(peerAddr)
 	if err != nil {
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
 	}
-	defer destinationConn.Close()
-
-	dstClient := proto.NewVideoContentStorageServiceClient(destinationConn)
+	defer closeDestination()
 
 	// Assign files from the removed server to the neighbor server based on consistant hashing
 	response, err := srcClient.ReadFiles(ctx, &proto.BatchReadRequest{})
 	if err != nil {
 		log.Printf("ReadFile RPC failed: %v\n", err)
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
+	}
+	if response == nil {
+		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, errors.New("source node returned an empty response")
 	}
 
 	fmt.Printf("Number of files: %v\n", len(response.Entries))
@@ -330,17 +359,23 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 
 	start := time.Now()
 
-	writeResponse, err := dstClient.WriteFiles(ctx, batchWriteRequest)
-	if err != nil {
-		log.Printf("Failed to send files: %v\n", err)
-		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
-	}
-	if writeResponse.Cnt != uint32(len(response.Entries)) {
-		return &proto.RemoveNodeResponse{MigratedFileCount: int32(writeResponse.Cnt)}, fmt.Errorf(
-			"destination wrote %d of %d files",
-			writeResponse.Cnt,
-			len(response.Entries),
-		)
+	if len(response.Entries) > 0 {
+		writeResponse, err := dstClient.WriteFiles(ctx, batchWriteRequest)
+		if err != nil {
+			log.Printf("Failed to send files: %v\n", err)
+			return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
+		}
+		if writeResponse == nil || writeResponse.Cnt != uint32(len(response.Entries)) {
+			var written uint32
+			if writeResponse != nil {
+				written = writeResponse.Cnt
+			}
+			return &proto.RemoveNodeResponse{MigratedFileCount: int32(written)}, fmt.Errorf(
+				"destination wrote %d of %d files",
+				written,
+				len(response.Entries),
+			)
+		}
 	}
 
 	end := time.Since(start)
@@ -351,9 +386,13 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 	}
 
 	// shut down server
-	if srv, ok := ns.serverInstances[req.NodeAddress]; ok {
+	ns.mu.RLock()
+	localServer, local := ns.serverInstances[req.NodeAddress]
+	ns.mu.RUnlock()
+
+	if local {
 		log.Printf("Gracefully stopping server at %s\n", req.NodeAddress)
-		srv.GracefulStop()
+		localServer.GracefulStop()
 	} else {
 		// Fall back: issue a Shutdown RPC to remote server directly
 		if _, err := srcClient.Shutdown(ctx, &proto.ShutdownRequest{}); err != nil {
@@ -361,18 +400,73 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 		}
 	}
 
-	for i, id := range ns.storageIds {
-		if id == removeNodeId {
-			ns.storageIds = append(ns.storageIds[:i], ns.storageIds[i+1:]...)
-		}
-	}
-	delete(ns.storageServers, removeNodeId)
+	ns.mu.Lock()
+	ns.storageIds = proposedIDs
+	ns.storageServers = proposedServers
 	delete(ns.serverInstances, req.NodeAddress)
+	ns.mu.Unlock()
 
 	return &proto.RemoveNodeResponse{MigratedFileCount: int32(len(response.Entries))}, nil
 }
 
+func findStorageAddr(key string, storageIDs []uint64, storageServers map[uint64]string) string {
+	if len(storageIDs) == 0 {
+		return ""
+	}
+
+	objectID := HashStringToUint64(key)
+	for _, id := range storageIDs {
+		if objectID <= id {
+			return storageServers[id]
+		}
+	}
+	return storageServers[storageIDs[0]]
+}
+
+func cloneStorageServers(source map[uint64]string) map[uint64]string {
+	result := make(map[uint64]string, len(source)+1)
+	for id, address := range source {
+		result[id] = address
+	}
+	return result
+}
+
+func (ns *NetworkVideoContentService) startNode(address string) error {
+	if ns.startStorageNode != nil {
+		return ns.startStorageNode(address)
+	}
+	return ns.InitStorageServer(address)
+}
+
+func (ns *NetworkVideoContentService) dialNode(address string) (storageRPCClient, func() error, error) {
+	if ns.dialStorageNode != nil {
+		return ns.dialStorageNode(address)
+	}
+
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, nil, err
+	}
+	return proto.NewVideoContentStorageServiceClient(conn), conn.Close, nil
+}
+
+func (ns *NetworkVideoContentService) stopLocalNode(address string) {
+	ns.mu.Lock()
+	server, ok := ns.serverInstances[address]
+	if ok {
+		delete(ns.serverInstances, address)
+	}
+	ns.mu.Unlock()
+
+	if ok {
+		server.Stop()
+	}
+}
+
 func (ns *NetworkVideoContentService) ListNodes(ctx context.Context, req *proto.ListNodesRequest) (*proto.ListNodesResponse, error) {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+
 	nodes := make([]string, 0, len(ns.storageIds))
 
 	for _, id := range ns.storageIds {
