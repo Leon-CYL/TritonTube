@@ -441,78 +441,6 @@ func (x *BatchReadResponse) GetEntries() []*FileEntry {
 	return nil
 }
 
-type ShutdownRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ShutdownRequest) Reset() {
-	*x = ShutdownRequest{}
-	mi := &file_proto_storage_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ShutdownRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ShutdownRequest) ProtoMessage() {}
-
-func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_storage_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ShutdownRequest.ProtoReflect.Descriptor instead.
-func (*ShutdownRequest) Descriptor() ([]byte, []int) {
-	return file_proto_storage_proto_rawDescGZIP(), []int{9}
-}
-
-type ShutdownResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ShutdownResponse) Reset() {
-	*x = ShutdownResponse{}
-	mi := &file_proto_storage_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ShutdownResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ShutdownResponse) ProtoMessage() {}
-
-func (x *ShutdownResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_storage_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ShutdownResponse.ProtoReflect.Descriptor instead.
-func (*ShutdownResponse) Descriptor() ([]byte, []int) {
-	return file_proto_storage_proto_rawDescGZIP(), []int{10}
-}
-
 var File_proto_storage_proto protoreflect.FileDescriptor
 
 const file_proto_storage_proto_rawDesc = "" +
@@ -539,16 +467,13 @@ const file_proto_storage_proto_rawDesc = "" +
 	"\x04data\x18\x01 \x01(\fR\x04data\"\x12\n" +
 	"\x10BatchReadRequest\"D\n" +
 	"\x11BatchReadResponse\x12/\n" +
-	"\aentries\x18\x01 \x03(\v2\x15.tritontube.FileEntryR\aentries\"\x11\n" +
-	"\x0fShutdownRequest\"\x12\n" +
-	"\x10ShutdownResponse2\xfb\x02\n" +
+	"\aentries\x18\x01 \x03(\v2\x15.tritontube.FileEntryR\aentries2\xb4\x02\n" +
 	"\x1aVideoContentStorageService\x12@\n" +
 	"\tWriteFile\x12\x18.tritontube.WriteRequest\x1a\x19.tritontube.WriteResponse\x12K\n" +
 	"\n" +
 	"WriteFiles\x12\x1d.tritontube.BatchWriteRequest\x1a\x1e.tritontube.BatchWriteResponse\x12=\n" +
 	"\bReadFile\x12\x17.tritontube.ReadRequest\x1a\x18.tritontube.ReadResponse\x12H\n" +
-	"\tReadFiles\x12\x1c.tritontube.BatchReadRequest\x1a\x1d.tritontube.BatchReadResponse\x12E\n" +
-	"\bShutdown\x12\x1b.tritontube.ShutdownRequest\x1a\x1c.tritontube.ShutdownResponseB\x16Z\x14internal/proto;protob\x06proto3"
+	"\tReadFiles\x12\x1c.tritontube.BatchReadRequest\x1a\x1d.tritontube.BatchReadResponseB\x16Z\x14internal/proto;protob\x06proto3"
 
 var (
 	file_proto_storage_proto_rawDescOnce sync.Once
@@ -562,7 +487,7 @@ func file_proto_storage_proto_rawDescGZIP() []byte {
 	return file_proto_storage_proto_rawDescData
 }
 
-var file_proto_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_proto_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_proto_storage_proto_goTypes = []any{
 	(*WriteRequest)(nil),       // 0: tritontube.WriteRequest
 	(*WriteResponse)(nil),      // 1: tritontube.WriteResponse
@@ -573,27 +498,23 @@ var file_proto_storage_proto_goTypes = []any{
 	(*ReadResponse)(nil),       // 6: tritontube.ReadResponse
 	(*BatchReadRequest)(nil),   // 7: tritontube.BatchReadRequest
 	(*BatchReadResponse)(nil),  // 8: tritontube.BatchReadResponse
-	(*ShutdownRequest)(nil),    // 9: tritontube.ShutdownRequest
-	(*ShutdownResponse)(nil),   // 10: tritontube.ShutdownResponse
 }
 var file_proto_storage_proto_depIdxs = []int32{
-	2,  // 0: tritontube.BatchWriteRequest.entries:type_name -> tritontube.FileEntry
-	2,  // 1: tritontube.BatchReadResponse.entries:type_name -> tritontube.FileEntry
-	0,  // 2: tritontube.VideoContentStorageService.WriteFile:input_type -> tritontube.WriteRequest
-	3,  // 3: tritontube.VideoContentStorageService.WriteFiles:input_type -> tritontube.BatchWriteRequest
-	5,  // 4: tritontube.VideoContentStorageService.ReadFile:input_type -> tritontube.ReadRequest
-	7,  // 5: tritontube.VideoContentStorageService.ReadFiles:input_type -> tritontube.BatchReadRequest
-	9,  // 6: tritontube.VideoContentStorageService.Shutdown:input_type -> tritontube.ShutdownRequest
-	1,  // 7: tritontube.VideoContentStorageService.WriteFile:output_type -> tritontube.WriteResponse
-	4,  // 8: tritontube.VideoContentStorageService.WriteFiles:output_type -> tritontube.BatchWriteResponse
-	6,  // 9: tritontube.VideoContentStorageService.ReadFile:output_type -> tritontube.ReadResponse
-	8,  // 10: tritontube.VideoContentStorageService.ReadFiles:output_type -> tritontube.BatchReadResponse
-	10, // 11: tritontube.VideoContentStorageService.Shutdown:output_type -> tritontube.ShutdownResponse
-	7,  // [7:12] is the sub-list for method output_type
-	2,  // [2:7] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	2, // 0: tritontube.BatchWriteRequest.entries:type_name -> tritontube.FileEntry
+	2, // 1: tritontube.BatchReadResponse.entries:type_name -> tritontube.FileEntry
+	0, // 2: tritontube.VideoContentStorageService.WriteFile:input_type -> tritontube.WriteRequest
+	3, // 3: tritontube.VideoContentStorageService.WriteFiles:input_type -> tritontube.BatchWriteRequest
+	5, // 4: tritontube.VideoContentStorageService.ReadFile:input_type -> tritontube.ReadRequest
+	7, // 5: tritontube.VideoContentStorageService.ReadFiles:input_type -> tritontube.BatchReadRequest
+	1, // 6: tritontube.VideoContentStorageService.WriteFile:output_type -> tritontube.WriteResponse
+	4, // 7: tritontube.VideoContentStorageService.WriteFiles:output_type -> tritontube.BatchWriteResponse
+	6, // 8: tritontube.VideoContentStorageService.ReadFile:output_type -> tritontube.ReadResponse
+	8, // 9: tritontube.VideoContentStorageService.ReadFiles:output_type -> tritontube.BatchReadResponse
+	6, // [6:10] is the sub-list for method output_type
+	2, // [2:6] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_proto_storage_proto_init() }
@@ -607,7 +528,7 @@ func file_proto_storage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_storage_proto_rawDesc), len(file_proto_storage_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

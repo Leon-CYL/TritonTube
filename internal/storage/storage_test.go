@@ -9,18 +9,13 @@ import (
 	"path/filepath"
 	"testing"
 	"tritontube/internal/proto"
-
-	"google.golang.org/grpc"
 )
 
 func newServer(t *testing.T) *StorageServer {
 	t.Helper()
 
 	baseDir := t.TempDir()
-	grpcServer := grpc.NewServer()
-	t.Cleanup(grpcServer.Stop)
-
-	return NewStorageServer(baseDir, grpcServer)
+	return NewStorageServer(baseDir)
 }
 
 func TestWriteFile(t *testing.T) {

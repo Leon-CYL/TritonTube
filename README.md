@@ -182,12 +182,20 @@ Use the admin CLI against the admin gRPC address:
 # List storage nodes
 go run ./cmd/admin list localhost:3343
 
-# Add a storage node
+# Start a new storage process before adding it to the hash ring
+go run ./cmd/storage --host localhost --port 8096 ./storage/8096
+
+# In another terminal, verify, migrate, and add the running node
 go run ./cmd/admin add localhost:3343 localhost:8096
 
-# Remove a storage node
+# Migrate and remove the node from the hash ring
 go run ./cmd/admin remove localhost:3343 localhost:8096
 ```
+
+The web service manages storage membership and data migration, but it does not
+start or stop storage processes. After a successful removal, stop that storage
+process separately with `Ctrl-C`. Web and storage processes handle `SIGINT` and
+`SIGTERM` with graceful shutdown.
 
 ## Development
 

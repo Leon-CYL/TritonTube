@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"tritontube/internal/proto"
 	"tritontube/internal/storage"
 
@@ -13,19 +17,23 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "storage:", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	host := flag.String("host", "localhost", "Host address for the server")
 	port := flag.Int("port", 8090, "Port number for the server")
 	flag.Parse()
 
 	// Validate arguments
 	if *port <= 0 {
-		panic("Error: Port number must be positive")
+		return errors.New("port number must be positive")
 	}
-
 	if flag.NArg() < 1 {
-		fmt.Println("Usage: storage [OPTIONS] <baseDir>")
-		fmt.Println("Error: Base directory argument is required")
-		return
+		return errors.New("usage: storage [OPTIONS] <baseDir>: base directory is required")
 	}
 	baseDir := flag.Arg(0)
 
@@ -36,27 +44,34 @@ func main() {
 
 	// use gRPC to start the server
 
-	grpcServer := grpc.NewServer(
-		grpc.MaxRecvMsgSize(64*1024*1024),
-		grpc.MaxSendMsgSize(64*1024*1024),
-	)
+	grpcServer := grpc.NewServer()
 
-	server := storage.NewStorageServer(baseDir, grpcServer)
+	server := storage.NewStorageServer(baseDir)
 
 	if server == nil {
-		fmt.Printf("Storage Server start failed\n")
-		return
+		return errors.New("storage server initialization failed")
 	}
 
 	proto.RegisterVideoContentStorageServiceServer(grpcServer, server)
 
 	lis, err := net.Listen("tcp", *host+":"+strconv.Itoa(*port))
 	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
+		return fmt.Errorf("listen: %w", err)
 	}
+	defer lis.Close()
+
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
+	go func() {
+		<-signalCtx.Done()
+		fmt.Println("Stopping storage server...")
+		grpcServer.GracefulStop()
+	}()
 
 	fmt.Printf("Storage server %s is running...\n", *host+":"+strconv.Itoa(*port))
 	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("Failed to serve: %v", err)
+		return fmt.Errorf("serve: %w", err)
 	}
+	return nil
 }

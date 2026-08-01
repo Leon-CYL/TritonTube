@@ -3,6 +3,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"io"
@@ -26,7 +27,8 @@ type server struct {
 	metadataService VideoMetadataService
 	contentService  VideoContentService
 
-	mux *http.ServeMux
+	mux        *http.ServeMux
+	httpServer *http.Server
 }
 
 type VideoData struct {
@@ -39,20 +41,28 @@ func NewServer(
 	metadataService VideoMetadataService,
 	contentService VideoContentService,
 ) *server {
-	return &server{
+	mux := http.NewServeMux()
+	s := &server{
 		metadataService: metadataService,
 		contentService:  contentService,
+		mux:             mux,
 	}
+	mux.HandleFunc("/upload", s.handleUpload)
+	mux.HandleFunc("/videos/", s.handleVideo)
+	mux.HandleFunc("/content/", s.handleVideoContent)
+	mux.HandleFunc("/", s.handleIndex)
+	s.httpServer = &http.Server{
+		Handler: mux,
+	}
+	return s
 }
 
 func (s *server) Start(lis net.Listener) error {
-	s.mux = http.NewServeMux()
-	s.mux.HandleFunc("/upload", s.handleUpload)
-	s.mux.HandleFunc("/videos/", s.handleVideo)
-	s.mux.HandleFunc("/content/", s.handleVideoContent)
-	s.mux.HandleFunc("/", s.handleIndex)
+	return s.httpServer.Serve(lis)
+}
 
-	return http.Serve(lis, s.mux)
+func (s *server) Shutdown(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }
 
 func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {

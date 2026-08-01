@@ -61,9 +61,6 @@ func printUsageAndExit() {
 }
 
 func addNode(client proto.VideoContentAdminServiceClient, nodeAddr string) {
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	// defer cancel()
-
 	response, err := client.AddNode(context.Background(), &proto.AddNodeRequest{
 		NodeAddress: nodeAddr,
 	})
@@ -76,9 +73,6 @@ func addNode(client proto.VideoContentAdminServiceClient, nodeAddr string) {
 }
 
 func removeNode(client proto.VideoContentAdminServiceClient, nodeAddr string) {
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	// defer cancel()
-
 	response, err := client.RemoveNode(context.Background(), &proto.RemoveNodeRequest{
 		NodeAddress: nodeAddr,
 	})
@@ -91,9 +85,6 @@ func removeNode(client proto.VideoContentAdminServiceClient, nodeAddr string) {
 }
 
 func listNodes(client proto.VideoContentAdminServiceClient) {
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	// defer cancel()
-
 	response, err := client.ListNodes(context.Background(), &proto.ListNodesRequest{})
 	if err != nil {
 		log.Fatalf("ListNodes RPC failed: %v", err)

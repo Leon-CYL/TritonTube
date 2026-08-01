@@ -23,7 +23,7 @@ func newGRPCStorageClient(
 	listener := bufconn.Listen(bufSize)
 	grpcServer := grpc.NewServer()
 
-	storageServer := NewStorageServer(t.TempDir(), grpcServer)
+	storageServer := NewStorageServer(t.TempDir())
 	if storageServer == nil {
 		t.Fatal("NewStorageServer returned nil")
 	}

@@ -23,7 +23,6 @@ const (
 	VideoContentStorageService_WriteFiles_FullMethodName = "/tritontube.VideoContentStorageService/WriteFiles"
 	VideoContentStorageService_ReadFile_FullMethodName   = "/tritontube.VideoContentStorageService/ReadFile"
 	VideoContentStorageService_ReadFiles_FullMethodName  = "/tritontube.VideoContentStorageService/ReadFiles"
-	VideoContentStorageService_Shutdown_FullMethodName   = "/tritontube.VideoContentStorageService/Shutdown"
 )
 
 // VideoContentStorageServiceClient is the client API for VideoContentStorageService service.
@@ -34,7 +33,6 @@ type VideoContentStorageServiceClient interface {
 	WriteFiles(ctx context.Context, in *BatchWriteRequest, opts ...grpc.CallOption) (*BatchWriteResponse, error)
 	ReadFile(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error)
 	ReadFiles(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*BatchReadResponse, error)
-	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
 }
 
 type videoContentStorageServiceClient struct {
@@ -85,16 +83,6 @@ func (c *videoContentStorageServiceClient) ReadFiles(ctx context.Context, in *Ba
 	return out, nil
 }
 
-func (c *videoContentStorageServiceClient) Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ShutdownResponse)
-	err := c.cc.Invoke(ctx, VideoContentStorageService_Shutdown_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // VideoContentStorageServiceServer is the server API for VideoContentStorageService service.
 // All implementations must embed UnimplementedVideoContentStorageServiceServer
 // for forward compatibility.
@@ -103,7 +91,6 @@ type VideoContentStorageServiceServer interface {
 	WriteFiles(context.Context, *BatchWriteRequest) (*BatchWriteResponse, error)
 	ReadFile(context.Context, *ReadRequest) (*ReadResponse, error)
 	ReadFiles(context.Context, *BatchReadRequest) (*BatchReadResponse, error)
-	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
 	mustEmbedUnimplementedVideoContentStorageServiceServer()
 }
 
@@ -125,9 +112,6 @@ func (UnimplementedVideoContentStorageServiceServer) ReadFile(context.Context, *
 }
 func (UnimplementedVideoContentStorageServiceServer) ReadFiles(context.Context, *BatchReadRequest) (*BatchReadResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReadFiles not implemented")
-}
-func (UnimplementedVideoContentStorageServiceServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Shutdown not implemented")
 }
 func (UnimplementedVideoContentStorageServiceServer) mustEmbedUnimplementedVideoContentStorageServiceServer() {
 }
@@ -223,24 +207,6 @@ func _VideoContentStorageService_ReadFiles_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
-func _VideoContentStorageService_Shutdown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ShutdownRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VideoContentStorageServiceServer).Shutdown(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: VideoContentStorageService_Shutdown_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VideoContentStorageServiceServer).Shutdown(ctx, req.(*ShutdownRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // VideoContentStorageService_ServiceDesc is the grpc.ServiceDesc for VideoContentStorageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -263,10 +229,6 @@ var VideoContentStorageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReadFiles",
 			Handler:    _VideoContentStorageService_ReadFiles_Handler,
-		},
-		{
-			MethodName: "Shutdown",
-			Handler:    _VideoContentStorageService_Shutdown_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

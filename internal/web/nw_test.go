@@ -245,10 +245,8 @@ type fakeStorageRPCClient struct {
 	readErr       error
 	writeResponse *proto.BatchWriteResponse
 	writeErr      error
-	shutdownErr   error
 
 	writeRequests []*proto.BatchWriteRequest
-	shutdownCalls int
 }
 
 func (client *fakeStorageRPCClient) ReadFiles(
@@ -271,15 +269,6 @@ func (client *fakeStorageRPCClient) WriteFiles(
 	return &proto.BatchWriteResponse{Cnt: uint32(len(request.Entries))}, nil
 }
 
-func (client *fakeStorageRPCClient) Shutdown(
-	context.Context,
-	*proto.ShutdownRequest,
-	...grpc.CallOption,
-) (*proto.ShutdownResponse, error) {
-	client.shutdownCalls++
-	return &proto.ShutdownResponse{}, client.shutdownErr
-}
-
 func configureMigrationFakes(
 	t *testing.T,
 	service *NetworkVideoContentService,
@@ -287,9 +276,6 @@ func configureMigrationFakes(
 ) {
 	t.Helper()
 
-	service.startStorageNode = func(string) error {
-		return nil
-	}
 	service.dialStorageNode = func(address string) (storageRPCClient, func() error, error) {
 		client, ok := clients[address]
 		if !ok {
@@ -301,14 +287,10 @@ func configureMigrationFakes(
 
 func TestAddNodeFirstNode(t *testing.T) {
 	service := NewNetworkVideoContentService(nil)
-	started := ""
-	service.startStorageNode = func(address string) error {
-		started = address
-		return nil
-	}
-	service.dialStorageNode = func(string) (storageRPCClient, func() error, error) {
-		t.Fatal("first node should not dial a storage peer")
-		return nil, nil, nil
+	dialed := ""
+	service.dialStorageNode = func(address string) (storageRPCClient, func() error, error) {
+		dialed = address
+		return &fakeStorageRPCClient{}, func() error { return nil }, nil
 	}
 
 	const address = "node-a:9001"
@@ -319,8 +301,8 @@ func TestAddNodeFirstNode(t *testing.T) {
 	if response.MigratedFileCount != 0 {
 		t.Fatalf("migrated count = %d, want 0", response.MigratedFileCount)
 	}
-	if started != address {
-		t.Fatalf("started node = %q, want %q", started, address)
+	if dialed != address {
+		t.Fatalf("verified node = %q, want %q", dialed, address)
 	}
 	if got := service.FindStorageAddr("video/manifest.mpd"); got != address {
 		t.Fatalf("new ring owner = %q, want %q", got, address)
@@ -330,9 +312,9 @@ func TestAddNodeFirstNode(t *testing.T) {
 func TestAddNodeRejectsDuplicate(t *testing.T) {
 	const address = "node-a:9001"
 	service := NewNetworkVideoContentService([]string{address})
-	service.startStorageNode = func(string) error {
-		t.Fatal("duplicate node should not be started")
-		return nil
+	service.dialStorageNode = func(string) (storageRPCClient, func() error, error) {
+		t.Fatal("duplicate node should not be dialed")
+		return nil, nil, nil
 	}
 
 	_, err := service.AddNode(t.Context(), &proto.AddNodeRequest{NodeAddress: address})
@@ -523,9 +505,6 @@ func TestRemoveNodeMigratesAllFilesBeforePublishingRing(t *testing.T) {
 		len(destination.writeRequests[0].Entries) != len(entries) {
 		t.Fatalf("destination did not receive all files: %+v", destination.writeRequests)
 	}
-	if source.shutdownCalls != 1 {
-		t.Fatalf("source shutdown calls = %d, want 1", source.shutdownCalls)
-	}
 	if len(service.storageIds) != 1 || service.storageServers[service.storageIds[0]] != destinationAddress {
 		t.Fatalf("ring after removal = %v / %v", service.storageIds, service.storageServers)
 	}
@@ -570,14 +549,6 @@ func TestRemoveNodeFailureKeepsOldRing(t *testing.T) {
 			destination: &fakeStorageRPCClient{
 				writeResponse: &proto.BatchWriteResponse{Cnt: 0},
 			},
-		},
-		{
-			name: "source shutdown failure",
-			source: &fakeStorageRPCClient{
-				readResponse: &proto.BatchReadResponse{Entries: []*proto.FileEntry{migrationEntry}},
-				shutdownErr:  errors.New("shutdown failed"),
-			},
-			destination: &fakeStorageRPCClient{},
 		},
 	}
 
@@ -627,8 +598,29 @@ func TestRemoveEmptyNode(t *testing.T) {
 	if len(destination.writeRequests) != 0 {
 		t.Fatalf("empty removal made %d WriteFiles calls, want 0", len(destination.writeRequests))
 	}
-	if source.shutdownCalls != 1 {
-		t.Fatalf("source shutdown calls = %d, want 1", source.shutdownCalls)
+}
+
+func TestAddNodeUnreachableDestinationKeepsOldRing(t *testing.T) {
+	const sourceAddress = "node-a:9001"
+	const destinationAddress = "node-d:9004"
+
+	service := NewNetworkVideoContentService([]string{sourceAddress})
+	oldIDs := append([]uint64(nil), service.storageIds...)
+	oldServers := cloneStorageServers(service.storageServers)
+	service.dialStorageNode = func(address string) (storageRPCClient, func() error, error) {
+		if address == destinationAddress {
+			return nil, nil, errors.New("connection refused")
+		}
+		return &fakeStorageRPCClient{}, func() error { return nil }, nil
+	}
+
+	_, err := service.AddNode(t.Context(), &proto.AddNodeRequest{NodeAddress: destinationAddress})
+	if err == nil {
+		t.Fatal("AddNode expected an unreachable-destination error")
+	}
+	if !reflect.DeepEqual(service.storageIds, oldIDs) ||
+		!reflect.DeepEqual(service.storageServers, oldServers) {
+		t.Fatal("ring changed after destination verification failed")
 	}
 }
 

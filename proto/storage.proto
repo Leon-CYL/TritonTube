@@ -9,7 +9,6 @@ service VideoContentStorageService {
     rpc WriteFiles(BatchWriteRequest) returns (BatchWriteResponse);
     rpc ReadFile(ReadRequest) returns (ReadResponse);
     rpc ReadFiles(BatchReadRequest) returns (BatchReadResponse);
-    rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
 }
 
 message WriteRequest {
@@ -48,7 +47,3 @@ message BatchReadRequest {}
 message BatchReadResponse {
     repeated FileEntry entries = 1;
 }
-
-message ShutdownRequest {}
-
-message ShutdownResponse {}

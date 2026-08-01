@@ -19,8 +19,7 @@ var _ VideoMetadataService = (*EtcdVideoMetadataService)(nil)
 
 func NewEtcdVideoMetadataService(nodes []string) (*EtcdVideoMetadataService, error) {
 	client, err := clientv3.New(clientv3.Config{
-		Endpoints:   nodes,
-		DialTimeout: time.Second,
+		Endpoints: nodes,
 	})
 
 	if err != nil {
@@ -33,10 +32,12 @@ func NewEtcdVideoMetadataService(nodes []string) (*EtcdVideoMetadataService, err
 	}, nil
 }
 
+func (es *EtcdVideoMetadataService) Close() error {
+	return es.etcdClient.Close()
+}
+
 func (es *EtcdVideoMetadataService) Read(videoId string) (*VideoMetadata, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	res, err := es.etcdClient.Get(ctx, videoId)
+	res, err := es.etcdClient.Get(context.Background(), videoId)
 
 	if err != nil {
 		fmt.Printf("Read Error: %v\n", err)
@@ -58,9 +59,6 @@ func (es *EtcdVideoMetadataService) Read(videoId string) (*VideoMetadata, error)
 }
 
 func (es *EtcdVideoMetadataService) Create(videoId string, uploadedAt time.Time) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
 	metadata := VideoMetadata{
 		Id:         videoId,
 		UploadedAt: uploadedAt,
@@ -70,7 +68,7 @@ func (es *EtcdVideoMetadataService) Create(videoId string, uploadedAt time.Time)
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	_, err = es.etcdClient.Put(ctx, videoId, string(value))
+	_, err = es.etcdClient.Put(context.Background(), videoId, string(value))
 	if err != nil {
 		fmt.Printf("Create Error: %v\n", err)
 		return err
@@ -80,9 +78,7 @@ func (es *EtcdVideoMetadataService) Create(videoId string, uploadedAt time.Time)
 }
 
 func (es *EtcdVideoMetadataService) List() ([]VideoMetadata, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	res, err := es.etcdClient.Get(ctx, "", clientv3.WithPrefix())
+	res, err := es.etcdClient.Get(context.Background(), "", clientv3.WithPrefix())
 
 	if err != nil {
 		fmt.Printf("Create Error: %v\n", err)

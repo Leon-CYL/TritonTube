@@ -11,28 +11,23 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
-	"time"
 	"tritontube/internal/proto"
-
-	"google.golang.org/grpc"
 )
 
 // Implement a network video content service (server)
 type StorageServer struct {
 	proto.UnimplementedVideoContentStorageServiceServer
-	basePath   string
-	grpcServer *grpc.Server
+	basePath string
 }
 
-func NewStorageServer(base string, server *grpc.Server) *StorageServer {
+func NewStorageServer(base string) *StorageServer {
 	if err := os.MkdirAll(base, os.ModePerm); err != nil {
 		fmt.Printf("Failed to create storage directory: %v\n", err)
 		return nil
 	}
 
 	return &StorageServer{
-		basePath:   base,
-		grpcServer: server,
+		basePath: base,
 	}
 }
 
@@ -179,13 +174,4 @@ func splitStoredPath(path string) []string {
 
 func isDirectoryNotEmpty(err error) bool {
 	return errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST)
-}
-
-func (ss *StorageServer) Shutdown(ctx context.Context, req *proto.ShutdownRequest) (*proto.ShutdownResponse, error) {
-	fmt.Println("Received shutdown request. Stopping server...")
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		ss.grpcServer.GracefulStop()
-	}()
-	return &proto.ShutdownResponse{}, nil
 }

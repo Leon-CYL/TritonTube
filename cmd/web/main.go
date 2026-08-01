@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net"
+	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"tritontube/internal/proto"
 	"tritontube/internal/web"
 
@@ -17,7 +22,7 @@ func printUsage() {
 	fmt.Println("Usage: ./program [OPTIONS] METADATA_TYPE METADATA_OPTIONS CONTENT_TYPE CONTENT_OPTIONS")
 	fmt.Println()
 	fmt.Println("Arguments:")
-	fmt.Println("  METADATA_TYPE         Metadata service type (sqlite, etcd)")
+	fmt.Println("  METADATA_TYPE         Metadata service type (etcd)")
 	fmt.Println("  METADATA_OPTIONS      Options for metadata service (e.g., db path)")
 	fmt.Println("  CONTENT_TYPE          Content service type (fs, nw)")
 	fmt.Println("  CONTENT_OPTIONS       Options for content service (e.g., base dir, network addresses)")
@@ -25,10 +30,17 @@ func printUsage() {
 	fmt.Println("Options:")
 	flag.PrintDefaults()
 	fmt.Println()
-	fmt.Println("Example: ./program sqlite db.db fs /path/to/videos")
+	fmt.Println("Example: ./program etcd db.db fs /path/to/videos")
 }
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "web:", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// Define flags
 	port := flag.Int("port", 8080, "Port number for the web server")
 	host := flag.String("host", "localhost", "Host address for the web server")
@@ -41,9 +53,7 @@ func main() {
 
 	// Check if the correct number of positional arguments is provided
 	if len(flag.Args()) != 4 {
-		fmt.Println("Error: Incorrect number of arguments")
-		printUsage()
-		return
+		return errors.New("incorrect number of arguments; expected metadata and content configuration")
 	}
 
 	// Parse positional arguments
@@ -54,83 +64,94 @@ func main() {
 
 	// Validate port number (already an int from flag, check if positive)
 	if *port <= 0 {
-		fmt.Println("Error: Invalid port number:", *port)
-		printUsage()
-		return
+		return fmt.Errorf("invalid port number: %d", *port)
 	}
-
 	var err error
 
 	// Construct metadata service
 	var metadataService web.VideoMetadataService
 	fmt.Println("Creating metadata service of type", metadataServiceType, "with options", metadataServiceOptions)
-	// TODO: Implement metadata service creation logic
 	switch metadataServiceType {
 	case "etcd":
 		nodes := strings.Split(metadataServiceOptions, ",")
-		metadataService, err = web.NewEtcdVideoMetadataService(nodes)
+		etcdService, createErr := web.NewEtcdVideoMetadataService(nodes)
 
-		if err != nil {
-			fmt.Printf("MetadataService create failed: %v\n", err)
-			return
+		if createErr != nil {
+			return fmt.Errorf("create metadata service: %w", createErr)
 		}
+		defer etcdService.Close()
+		metadataService = etcdService
 
 	default:
-		fmt.Printf("Unknown File System type [sqlite/etcd]: %s\n", metadataServiceType)
-		return
+		return fmt.Errorf("unknown metadata service type %q; supported: etcd", metadataServiceType)
 	}
 
 	// Construct content service
 	var contentService web.VideoContentService
+	var grpcServer *grpc.Server
 	fmt.Println("Creating content service of type", contentServiceType, "with options", contentServiceOptions)
-	// TODO: Implement content service creation logic
 	switch contentServiceType {
 	case "nw":
 		nodes := strings.Split(contentServiceOptions, ",")
 
 		if len(nodes) < 2 {
-			fmt.Println("Invalid contentServiceOptions: expected at least one admin address and one node")
-			return
+			return errors.New("content options require one admin address and at least one storage node")
 		}
 
 		contentService = web.NewNetworkVideoContentService(nodes[1:])
 
-		grpcServer := grpc.NewServer()
+		grpcServer = grpc.NewServer()
 		proto.RegisterVideoContentAdminServiceServer(grpcServer, contentService.(*web.NetworkVideoContentService))
 
 		lis, err := net.Listen("tcp", nodes[0])
 		if err != nil {
-			log.Fatalf("Failed to listen: %v", err)
-			return
+			return fmt.Errorf("listen for admin gRPC on %s: %w", nodes[0], err)
 		}
+		defer lis.Close()
 		fmt.Printf("Admin server %s is running...\n", nodes[0])
 
 		go func() {
 			if err := grpcServer.Serve(lis); err != nil {
-				log.Fatalf("Failed to serve: %v", err)
-				return
+				fmt.Fprintln(os.Stderr, "admin gRPC server:", err)
 			}
 		}()
 
 	default:
-		fmt.Printf("Unknown File System type [fs/nw]: %s\n", contentServiceType)
-		return
+		return fmt.Errorf("unknown content service type %q; supported: nw", contentServiceType)
 	}
 
-	// Start the server
+	// Start the web server
 	server := web.NewServer(metadataService, contentService)
 	listenAddr := fmt.Sprintf("%s:%d", *host, *port)
 	lis, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		fmt.Println("Error starting listener:", err)
-		return
+		return fmt.Errorf("listen for HTTP on %s: %w", listenAddr, err)
 	}
 	defer lis.Close()
 
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	shutdownDone := make(chan struct{})
+
+	go func() {
+		<-signalCtx.Done()
+		defer close(shutdownDone)
+		fmt.Println("Stopping web and admin servers...")
+
+		if err := server.Shutdown(context.Background()); err != nil {
+			fmt.Fprintln(os.Stderr, "HTTP shutdown:", err)
+		}
+
+		grpcServer.GracefulStop()
+	}()
+
 	fmt.Println("Starting web server on", listenAddr)
 	err = server.Start(lis)
-	if err != nil {
-		fmt.Println("Error starting server:", err)
-		return
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve HTTP: %w", err)
 	}
+	if signalCtx.Err() != nil {
+		<-shutdownDone
+	}
+	return nil
 }
