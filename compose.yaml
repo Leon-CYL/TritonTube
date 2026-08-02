@@ -1,0 +1,125 @@
+name: tritontube
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.6.0
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+    volumes:
+      - etcd-data:/etcd-data
+    healthcheck:
+      test:
+        - CMD
+        - /usr/local/bin/etcdctl
+        - endpoint
+        - health
+        - --endpoints=http://127.0.0.1:2379
+      interval: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  storage1:
+    build:
+      context: .
+      dockerfile: Dockerfile.storage
+    image: tritontube-storage:local
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8090"
+      - /var/lib/tritontube
+    volumes:
+      - storage1-data:/var/lib/tritontube
+    restart: unless-stopped
+
+  storage2:
+    build:
+      context: .
+      dockerfile: Dockerfile.storage
+    image: tritontube-storage:local
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8090"
+      - /var/lib/tritontube
+    volumes:
+      - storage2-data:/var/lib/tritontube
+    restart: unless-stopped
+
+  storage3:
+    build:
+      context: .
+      dockerfile: Dockerfile.storage
+    image: tritontube-storage:local
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8090"
+      - /var/lib/tritontube
+    volumes:
+      - storage3-data:/var/lib/tritontube
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: tritontube-web:local
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - etcd
+      - etcd:2379
+      - nw
+      - 0.0.0.0:3343,storage1:8090,storage2:8090,storage3:8090
+    ports:
+      - "8080:8080"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      storage1:
+        condition: service_started
+      storage2:
+        condition: service_started
+      storage3:
+        condition: service_started
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    image: tritontube-admin:local
+    profiles:
+      - tools
+    depends_on:
+      web:
+        condition: service_started
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      target: builder
+    command:
+      - go
+      - test
+      - ./...
+    profiles:
+      - test
+
+volumes:
+  etcd-data:
+  storage1-data:
+  storage2-data:
+  storage3-data:

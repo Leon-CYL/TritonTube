@@ -78,9 +78,11 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-## Getting started
+## Local commands
 
-### 1. Clone and verify the project
+These commands run TritonTube directly on the host without Docker.
+
+### 1. Clone and test the project
 
 ```bash
 git clone https://github.com/Leon-CYL/TritonTube.git
@@ -139,11 +141,6 @@ etcd \
   --initial-cluster-state new
 ```
 
-This local cluster demonstrates etcd quorum and tolerance of one member-process
-failure. Because all members run on the same machine, it does not provide
-machine-level high availability. Production members should run in separate
-failure domains.
-
 ### 3. Start storage nodes
 
 Run each command in a separate terminal:
@@ -174,7 +171,7 @@ go run ./cmd/web \
 
 Open [http://localhost:8080](http://localhost:8080).
 
-## Storage administration
+### Local storage administration
 
 Use the admin CLI against the admin gRPC address:
 
@@ -192,14 +189,81 @@ go run ./cmd/admin add localhost:3343 localhost:8096
 go run ./cmd/admin remove localhost:3343 localhost:8096
 ```
 
-The web service manages storage membership and data migration, but it does not
-start or stop storage processes. After a successful removal, stop that storage
-process separately with `Ctrl-C`. Web and storage processes handle `SIGINT` and
-`SIGTERM` with graceful shutdown.
+
+## Docker commands
+
+Docker Compose starts one etcd member, three persistent storage nodes, and the
+web service. Only port `8080` is published to the host.
+
+### Start the application
+
+Build the images and start the complete application in the background:
+
+```bash
+docker compose up --build --detach
+```
+
+Open [http://localhost:8080](http://localhost:8080).
+
+View container status and follow logs:
+
+```bash
+docker compose ps
+docker compose logs --follow
+```
+
+### Stop the application
+
+Stop and remove the containers and network while preserving uploaded videos
+and metadata in named volumes:
+
+```bash
+docker compose down
+```
+
+To also delete all persisted TritonTube data and start clean:
+
+```bash
+docker compose down --volumes
+```
+
+### Docker admin commands
+
+The admin CLI runs as an on-demand container under the `tools` profile:
+
+```bash
+# List storage nodes
+docker compose --profile tools run --rm admin list web:3343
+
+# Remove storage3 from the hash ring after migrating its files
+docker compose --profile tools run --rm admin remove web:3343 storage3:8090
+
+# Add the still-running storage3 process back to the hash ring
+docker compose --profile tools run --rm admin add web:3343 storage3:8090
+```
+
+Adding a node requires its storage container to already be running. Removing a
+node updates membership and migrates its files, but does not stop its container.
+
+### Run tests in Docker
+
+Run all tests in an isolated Go builder container:
+
+```bash
+docker compose --profile test run --rm test
+```
+
+Run the race detector or a specific package by overriding the test service's
+default command:
+
+```bash
+docker compose --profile test run --rm test go test -race ./...
+docker compose --profile test run --rm test go test -v ./internal/web
+```
 
 ## Development
 
-### Tests
+### Local tests
 
 ```bash
 make test
