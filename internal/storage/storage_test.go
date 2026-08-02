@@ -227,6 +227,33 @@ func TestEmptyStorageServer(t *testing.T) {
 	}
 }
 
+func TestListFilesReturnsIdentifiersWithoutData(t *testing.T) {
+	server := newServer(t)
+	_, err := server.WriteFile(t.Context(), &proto.WriteRequest{
+		VideoId:  "video-a",
+		Filename: "manifest.mpd",
+		Data:     []byte("manifest contents"),
+	})
+	if err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	response, err := server.ListFiles(t.Context(), &proto.BatchReadRequest{})
+	if err != nil {
+		t.Fatalf("ListFiles failed: %v", err)
+	}
+	if len(response.Entries) != 1 {
+		t.Fatalf("ListFiles returned %d entries, want 1", len(response.Entries))
+	}
+	entry := response.Entries[0]
+	if entry.VideoId != "video-a" || entry.Filename != "manifest.mpd" {
+		t.Fatalf("ListFiles returned unexpected entry: %+v", entry)
+	}
+	if len(entry.Data) != 0 {
+		t.Fatalf("ListFiles returned %d data bytes, want 0", len(entry.Data))
+	}
+}
+
 func TestReadFileError(t *testing.T) {
 	server := newServer(t)
 

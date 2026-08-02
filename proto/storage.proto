@@ -9,6 +9,9 @@ service VideoContentStorageService {
     rpc WriteFiles(BatchWriteRequest) returns (BatchWriteResponse);
     rpc ReadFile(ReadRequest) returns (ReadResponse);
     rpc ReadFiles(BatchReadRequest) returns (BatchReadResponse);
+    // ListFiles returns file identifiers without loading file contents. It lets
+    // migration discover files before transferring them with single-file RPCs.
+    rpc ListFiles(BatchReadRequest) returns (BatchReadResponse);
 }
 
 message WriteRequest {

@@ -246,10 +246,10 @@ type fakeStorageRPCClient struct {
 	writeResponse *proto.BatchWriteResponse
 	writeErr      error
 
-	writeRequests []*proto.BatchWriteRequest
+	writeRequests []*proto.WriteRequest
 }
 
-func (client *fakeStorageRPCClient) ReadFiles(
+func (client *fakeStorageRPCClient) ListFiles(
 	context.Context,
 	*proto.BatchReadRequest,
 	...grpc.CallOption,
@@ -257,17 +257,86 @@ func (client *fakeStorageRPCClient) ReadFiles(
 	return client.readResponse, client.readErr
 }
 
-func (client *fakeStorageRPCClient) WriteFiles(
+func (client *fakeStorageRPCClient) ReadFile(
 	_ context.Context,
-	request *proto.BatchWriteRequest,
+	request *proto.ReadRequest,
 	_ ...grpc.CallOption,
-) (*proto.BatchWriteResponse, error) {
-	client.writeRequests = append(client.writeRequests, request)
-	if client.writeResponse != nil || client.writeErr != nil {
-		return client.writeResponse, client.writeErr
+) (*proto.ReadResponse, error) {
+	if client.readErr != nil {
+		return nil, client.readErr
 	}
-	return &proto.BatchWriteResponse{Cnt: uint32(len(request.Entries))}, nil
+	if client.readResponse == nil {
+		return nil, nil
+	}
+	for _, entry := range client.readResponse.Entries {
+		if entry.VideoId == request.VideoId && entry.Filename == request.Filename {
+			return &proto.ReadResponse{Data: entry.Data}, nil
+		}
+	}
+	return nil, fmt.Errorf("file not found: %s/%s", request.VideoId, request.Filename)
 }
+
+func (client *fakeStorageRPCClient) WriteFile(
+	_ context.Context,
+	request *proto.WriteRequest,
+	_ ...grpc.CallOption,
+) (*proto.WriteResponse, error) {
+	client.writeRequests = append(client.writeRequests, request)
+	if client.writeErr != nil {
+		return nil, client.writeErr
+	}
+	if client.writeResponse != nil && client.writeResponse.Cnt == 0 {
+		return nil, errors.New("single-file write failed")
+	}
+	return &proto.WriteResponse{}, nil
+}
+
+/*
+Stage 3 optimized migration test-double reference (batch RPC version)
+
+When batch migration is restored, change writeRequests back to
+[]*proto.BatchWriteRequest and restore these methods on fakeStorageRPCClient:
+
+	func (client *fakeStorageRPCClient) ReadFiles(
+		context.Context,
+		*proto.BatchReadRequest,
+		...grpc.CallOption,
+	) (*proto.BatchReadResponse, error) {
+		return client.readResponse, client.readErr
+	}
+
+	func (client *fakeStorageRPCClient) WriteFiles(
+		_ context.Context,
+		request *proto.BatchWriteRequest,
+		_ ...grpc.CallOption,
+	) (*proto.BatchWriteResponse, error) {
+		client.writeRequests = append(client.writeRequests, request)
+		if client.writeResponse != nil || client.writeErr != nil {
+			return client.writeResponse, client.writeErr
+		}
+		return &proto.BatchWriteResponse{Cnt: uint32(len(request.Entries))}, nil
+	}
+
+The AddNode batch assertion was:
+
+	if len(destination.writeRequests) != 1 {
+		t.Fatalf("destination WriteFiles calls = %d, want 1", len(destination.writeRequests))
+	}
+	for _, entry := range destination.writeRequests[0].Entries {
+		key := entry.VideoId + "/" + entry.Filename
+		if !expected[key] {
+			t.Fatalf("AddNode copied file not assigned to destination: %s", key)
+		}
+		delete(expected, key)
+	}
+
+The RemoveNode batch assertion was:
+
+	if len(destination.writeRequests) != 1 ||
+		len(destination.writeRequests[0].Entries) != len(entries) {
+		t.Fatalf("destination did not receive all files: %+v", destination.writeRequests)
+	}
+*/
 
 func configureMigrationFakes(
 	t *testing.T,
@@ -365,12 +434,12 @@ func TestAddNodeCopiesOnlyReassignedFiles(t *testing.T) {
 	if response.MigratedFileCount != int32(len(expected)) {
 		t.Fatalf("migrated count = %d, want %d", response.MigratedFileCount, len(expected))
 	}
-	if len(destination.writeRequests) != 1 {
-		t.Fatalf("destination WriteFiles calls = %d, want 1", len(destination.writeRequests))
+	if len(destination.writeRequests) != len(expected) {
+		t.Fatalf("destination WriteFile calls = %d, want %d", len(destination.writeRequests), len(expected))
 	}
 
-	for _, entry := range destination.writeRequests[0].Entries {
-		key := entry.VideoId + "/" + entry.Filename
+	for _, request := range destination.writeRequests {
+		key := request.VideoId + "/" + request.Filename
 		if !expected[key] {
 			t.Fatalf("AddNode copied file not assigned to destination: %s", key)
 		}
@@ -406,7 +475,7 @@ func TestAddNodeWithNoFilesToMove(t *testing.T) {
 		t.Fatalf("migrated count = %d, want 0", response.MigratedFileCount)
 	}
 	if len(destination.writeRequests) != 0 {
-		t.Fatalf("empty migration made %d WriteFiles calls, want 0", len(destination.writeRequests))
+		t.Fatalf("empty migration made %d WriteFile calls, want 0", len(destination.writeRequests))
 	}
 	if _, exists := service.storageServers[HashStringToUint64(destinationAddress)]; !exists {
 		t.Fatal("destination was not published after empty migration")
@@ -501,8 +570,7 @@ func TestRemoveNodeMigratesAllFilesBeforePublishingRing(t *testing.T) {
 	if response.MigratedFileCount != int32(len(entries)) {
 		t.Fatalf("migrated count = %d, want %d", response.MigratedFileCount, len(entries))
 	}
-	if len(destination.writeRequests) != 1 ||
-		len(destination.writeRequests[0].Entries) != len(entries) {
+	if len(destination.writeRequests) != len(entries) {
 		t.Fatalf("destination did not receive all files: %+v", destination.writeRequests)
 	}
 	if len(service.storageIds) != 1 || service.storageServers[service.storageIds[0]] != destinationAddress {
@@ -596,7 +664,7 @@ func TestRemoveEmptyNode(t *testing.T) {
 		t.Fatalf("migrated count = %d, want 0", response.MigratedFileCount)
 	}
 	if len(destination.writeRequests) != 0 {
-		t.Fatalf("empty removal made %d WriteFiles calls, want 0", len(destination.writeRequests))
+		t.Fatalf("empty removal made %d WriteFile calls, want 0", len(destination.writeRequests))
 	}
 }
 

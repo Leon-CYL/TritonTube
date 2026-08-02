@@ -142,6 +142,44 @@ func (ss *StorageServer) ReadFiles(ctx context.Context, req *proto.BatchReadRequ
 	return &proto.BatchReadResponse{Entries: entries}, nil
 }
 
+// ListFiles lists stored file identifiers without reading their contents.
+func (ss *StorageServer) ListFiles(ctx context.Context, req *proto.BatchReadRequest) (*proto.BatchReadResponse, error) {
+	entries := make([]*proto.FileEntry, 0)
+
+	err := filepath.WalkDir(ss.basePath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+
+		relativePath, err := filepath.Rel(ss.basePath, path)
+		if err != nil {
+			return err
+		}
+		parts := splitStoredPath(relativePath)
+		if len(parts) != 2 {
+			log.Printf("Storage: Skipping file outside a video directory: %s\n", path)
+			return nil
+		}
+
+		entries = append(entries, &proto.FileEntry{
+			VideoId:  parts[0],
+			Filename: parts[1],
+		})
+		return nil
+	})
+	if err != nil {
+		return &proto.BatchReadResponse{Entries: entries}, err
+	}
+
+	return &proto.BatchReadResponse{Entries: entries}, nil
+}
+
 func (ss *StorageServer) filePath(videoID, filename string) (string, error) {
 	if videoID == "" || filename == "" {
 		return "", fmt.Errorf("video ID and filename must not be empty")

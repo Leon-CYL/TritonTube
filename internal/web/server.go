@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -197,52 +196,78 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	fileCount := 0
 	expectedCount := 0
 	var uploadErr error
-	var mutex sync.Mutex
-	var wg sync.WaitGroup
-	maxWorkers := 64
-	sem := make(chan struct{}, maxWorkers)
+	// var mutex sync.Mutex
+	// var wg sync.WaitGroup
+	// maxWorkers := 64
+	// sem := make(chan struct{}, maxWorkers)
 	start := time.Now()
 
+	// Sequential Inmplementation
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
 
 		expectedCount++
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(entry os.DirEntry) {
-			defer wg.Done()
-			defer func() { <-sem }()
 
-			fileName := entry.Name()
-			filePath := filepath.Join(dashDir, fileName)
+		fileName := entry.Name()
+		filePath := filepath.Join(dashDir, fileName)
 
-			data, err := os.ReadFile(filePath)
-			if err != nil {
-				mutex.Lock()
-				if uploadErr == nil {
-					uploadErr = fmt.Errorf("read DASH file %s: %w", fileName, err)
-				}
-				mutex.Unlock()
-				return
-			}
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			uploadErr = fmt.Errorf("read DASH file %s: %w", fileName, err)
+			break
+		}
 
-			if err := s.contentService.Write(videoId, fileName, data); err != nil {
-				mutex.Lock()
-				if uploadErr == nil {
-					uploadErr = fmt.Errorf("store DASH file %s: %w", fileName, err)
-				}
-				mutex.Unlock()
-				return
-			}
+		if err := s.contentService.Write(videoId, fileName, data); err != nil {
+			uploadErr = fmt.Errorf("store DASH file %s: %w", fileName, err)
+			break
+		}
 
-			mutex.Lock()
-			fileCount++
-			mutex.Unlock()
-		}(entry)
+		fileCount++
 	}
-	wg.Wait()
+
+	// Bounded Thread Pool implementation
+	// for _, entry := range entries {
+	// 	if entry.IsDir() {
+	// 		continue
+	// 	}
+
+	// 	expectedCount++
+	// 	wg.Add(1)
+	// 	sem <- struct{}{}
+	// 	go func(entry os.DirEntry) {
+	// 		defer wg.Done()
+	// 		defer func() { <-sem }()
+
+	// 		fileName := entry.Name()
+	// 		filePath := filepath.Join(dashDir, fileName)
+
+	// 		data, err := os.ReadFile(filePath)
+	// 		if err != nil {
+	// 			mutex.Lock()
+	// 			if uploadErr == nil {
+	// 				uploadErr = fmt.Errorf("read DASH file %s: %w", fileName, err)
+	// 			}
+	// 			mutex.Unlock()
+	// 			return
+	// 		}
+
+	// 		if err := s.contentService.Write(videoId, fileName, data); err != nil {
+	// 			mutex.Lock()
+	// 			if uploadErr == nil {
+	// 				uploadErr = fmt.Errorf("store DASH file %s: %w", fileName, err)
+	// 			}
+	// 			mutex.Unlock()
+	// 			return
+	// 		}
+
+	// 		mutex.Lock()
+	// 		fileCount++
+	// 		mutex.Unlock()
+	// 	}(entry)
+	// }
+	// wg.Wait()
 
 	if uploadErr != nil {
 		log.Printf("DASH upload failed after storing %d/%d files: %v", fileCount, expectedCount, uploadErr)

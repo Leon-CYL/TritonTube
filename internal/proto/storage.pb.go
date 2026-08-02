@@ -467,13 +467,14 @@ const file_proto_storage_proto_rawDesc = "" +
 	"\x04data\x18\x01 \x01(\fR\x04data\"\x12\n" +
 	"\x10BatchReadRequest\"D\n" +
 	"\x11BatchReadResponse\x12/\n" +
-	"\aentries\x18\x01 \x03(\v2\x15.tritontube.FileEntryR\aentries2\xb4\x02\n" +
+	"\aentries\x18\x01 \x03(\v2\x15.tritontube.FileEntryR\aentries2\xfe\x02\n" +
 	"\x1aVideoContentStorageService\x12@\n" +
 	"\tWriteFile\x12\x18.tritontube.WriteRequest\x1a\x19.tritontube.WriteResponse\x12K\n" +
 	"\n" +
 	"WriteFiles\x12\x1d.tritontube.BatchWriteRequest\x1a\x1e.tritontube.BatchWriteResponse\x12=\n" +
 	"\bReadFile\x12\x17.tritontube.ReadRequest\x1a\x18.tritontube.ReadResponse\x12H\n" +
-	"\tReadFiles\x12\x1c.tritontube.BatchReadRequest\x1a\x1d.tritontube.BatchReadResponseB\x16Z\x14internal/proto;protob\x06proto3"
+	"\tReadFiles\x12\x1c.tritontube.BatchReadRequest\x1a\x1d.tritontube.BatchReadResponse\x12H\n" +
+	"\tListFiles\x12\x1c.tritontube.BatchReadRequest\x1a\x1d.tritontube.BatchReadResponseB\x16Z\x14internal/proto;protob\x06proto3"
 
 var (
 	file_proto_storage_proto_rawDescOnce sync.Once
@@ -506,12 +507,14 @@ var file_proto_storage_proto_depIdxs = []int32{
 	3, // 3: tritontube.VideoContentStorageService.WriteFiles:input_type -> tritontube.BatchWriteRequest
 	5, // 4: tritontube.VideoContentStorageService.ReadFile:input_type -> tritontube.ReadRequest
 	7, // 5: tritontube.VideoContentStorageService.ReadFiles:input_type -> tritontube.BatchReadRequest
-	1, // 6: tritontube.VideoContentStorageService.WriteFile:output_type -> tritontube.WriteResponse
-	4, // 7: tritontube.VideoContentStorageService.WriteFiles:output_type -> tritontube.BatchWriteResponse
-	6, // 8: tritontube.VideoContentStorageService.ReadFile:output_type -> tritontube.ReadResponse
-	8, // 9: tritontube.VideoContentStorageService.ReadFiles:output_type -> tritontube.BatchReadResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
+	7, // 6: tritontube.VideoContentStorageService.ListFiles:input_type -> tritontube.BatchReadRequest
+	1, // 7: tritontube.VideoContentStorageService.WriteFile:output_type -> tritontube.WriteResponse
+	4, // 8: tritontube.VideoContentStorageService.WriteFiles:output_type -> tritontube.BatchWriteResponse
+	6, // 9: tritontube.VideoContentStorageService.ReadFile:output_type -> tritontube.ReadResponse
+	8, // 10: tritontube.VideoContentStorageService.ReadFiles:output_type -> tritontube.BatchReadResponse
+	8, // 11: tritontube.VideoContentStorageService.ListFiles:output_type -> tritontube.BatchReadResponse
+	7, // [7:12] is the sub-list for method output_type
+	2, // [2:7] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name

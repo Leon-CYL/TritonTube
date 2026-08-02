@@ -23,6 +23,7 @@ const (
 	VideoContentStorageService_WriteFiles_FullMethodName = "/tritontube.VideoContentStorageService/WriteFiles"
 	VideoContentStorageService_ReadFile_FullMethodName   = "/tritontube.VideoContentStorageService/ReadFile"
 	VideoContentStorageService_ReadFiles_FullMethodName  = "/tritontube.VideoContentStorageService/ReadFiles"
+	VideoContentStorageService_ListFiles_FullMethodName  = "/tritontube.VideoContentStorageService/ListFiles"
 )
 
 // VideoContentStorageServiceClient is the client API for VideoContentStorageService service.
@@ -33,6 +34,9 @@ type VideoContentStorageServiceClient interface {
 	WriteFiles(ctx context.Context, in *BatchWriteRequest, opts ...grpc.CallOption) (*BatchWriteResponse, error)
 	ReadFile(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadResponse, error)
 	ReadFiles(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*BatchReadResponse, error)
+	// ListFiles returns file identifiers without loading file contents. It lets
+	// migration discover files before transferring them with single-file RPCs.
+	ListFiles(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*BatchReadResponse, error)
 }
 
 type videoContentStorageServiceClient struct {
@@ -83,6 +87,16 @@ func (c *videoContentStorageServiceClient) ReadFiles(ctx context.Context, in *Ba
 	return out, nil
 }
 
+func (c *videoContentStorageServiceClient) ListFiles(ctx context.Context, in *BatchReadRequest, opts ...grpc.CallOption) (*BatchReadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchReadResponse)
+	err := c.cc.Invoke(ctx, VideoContentStorageService_ListFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // VideoContentStorageServiceServer is the server API for VideoContentStorageService service.
 // All implementations must embed UnimplementedVideoContentStorageServiceServer
 // for forward compatibility.
@@ -91,6 +105,9 @@ type VideoContentStorageServiceServer interface {
 	WriteFiles(context.Context, *BatchWriteRequest) (*BatchWriteResponse, error)
 	ReadFile(context.Context, *ReadRequest) (*ReadResponse, error)
 	ReadFiles(context.Context, *BatchReadRequest) (*BatchReadResponse, error)
+	// ListFiles returns file identifiers without loading file contents. It lets
+	// migration discover files before transferring them with single-file RPCs.
+	ListFiles(context.Context, *BatchReadRequest) (*BatchReadResponse, error)
 	mustEmbedUnimplementedVideoContentStorageServiceServer()
 }
 
@@ -112,6 +129,9 @@ func (UnimplementedVideoContentStorageServiceServer) ReadFile(context.Context, *
 }
 func (UnimplementedVideoContentStorageServiceServer) ReadFiles(context.Context, *BatchReadRequest) (*BatchReadResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReadFiles not implemented")
+}
+func (UnimplementedVideoContentStorageServiceServer) ListFiles(context.Context, *BatchReadRequest) (*BatchReadResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListFiles not implemented")
 }
 func (UnimplementedVideoContentStorageServiceServer) mustEmbedUnimplementedVideoContentStorageServiceServer() {
 }
@@ -207,6 +227,24 @@ func _VideoContentStorageService_ReadFiles_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VideoContentStorageService_ListFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchReadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VideoContentStorageServiceServer).ListFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VideoContentStorageService_ListFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VideoContentStorageServiceServer).ListFiles(ctx, req.(*BatchReadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // VideoContentStorageService_ServiceDesc is the grpc.ServiceDesc for VideoContentStorageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -229,6 +267,10 @@ var VideoContentStorageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReadFiles",
 			Handler:    _VideoContentStorageService_ReadFiles_Handler,
+		},
+		{
+			MethodName: "ListFiles",
+			Handler:    _VideoContentStorageService_ListFiles_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
