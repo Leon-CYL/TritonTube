@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 	"tritontube/internal/proto"
 
 	"google.golang.org/grpc"
@@ -52,6 +53,10 @@ func main() {
 	}
 }
 
+func durationMilliseconds(duration time.Duration) float64 {
+	return float64(duration) / float64(time.Millisecond)
+}
+
 func printUsageAndExit() {
 	fmt.Println("Usage:")
 	fmt.Println("  add <server_address> <node_address>     - Add a node to the cluster")
@@ -61,12 +66,15 @@ func printUsageAndExit() {
 }
 
 func addNode(client proto.VideoContentAdminServiceClient, nodeAddr string) {
+	start := time.Now()
 	response, err := client.AddNode(context.Background(), &proto.AddNodeRequest{
 		NodeAddress: nodeAddr,
 	})
 	if err != nil {
 		log.Fatalf("AddNode RPC failed: %v", err)
 	}
+	addTime := time.Since(start)
+	log.Printf("Total Add node time: %.3f ms\n", durationMilliseconds(addTime))
 
 	fmt.Printf("Successfully added node: %s\n", nodeAddr)
 	fmt.Printf("Number of files migrated: %d\n", response.MigratedFileCount)
