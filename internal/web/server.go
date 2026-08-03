@@ -36,6 +36,10 @@ type VideoData struct {
 	UploadTime string
 }
 
+func durationMilliseconds(duration time.Duration) float64 {
+	return float64(duration) / float64(time.Millisecond)
+}
+
 func NewServer(
 	metadataService VideoMetadataService,
 	contentService VideoContentService,
@@ -103,6 +107,12 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
+	uploadStart := time.Now()
+	videoId := "unknown"
+	defer func() {
+		log.Printf("Upload total time: video=%s duration=%.3f ms", videoId, durationMilliseconds(time.Since(uploadStart)))
+	}()
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -116,8 +126,9 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	videoId := strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	videoId = strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
 
+	start := time.Now()
 	existingVideo, err := s.metadataService.Read(videoId)
 	if err != nil {
 		http.Error(w, "Error checking video ID availability", http.StatusInternalServerError)
@@ -127,6 +138,8 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Video ID already exists: "+videoId, http.StatusConflict)
 		return
 	}
+	totalCheckTime := time.Since(start)
+	log.Printf("Metadata duplicate check time: %.3f ms", durationMilliseconds(totalCheckTime))
 
 	// Save the uploaded file to disk
 	uploadDir := filepath.Join(os.TempDir(), "videos")
@@ -144,11 +157,14 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dest.Close()
 
+	start = time.Now()
 	_, err = io.Copy(dest, file)
 	if err != nil {
 		http.Error(w, "Error saving file", http.StatusInternalServerError)
 		return
 	}
+	totalCopyTime := time.Since(start)
+	log.Printf("MP4 file copy time: %.3f ms", durationMilliseconds(totalCopyTime))
 
 	// Create a directory for DASH output using the video ID
 	dashDir := filepath.Join(uploadDir, videoId)
@@ -160,10 +176,13 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	manifestPath := filepath.Join(dashDir, "manifest.mpd")
 
+	start = time.Now()
 	// Run FFmpeg to generate MPEG-DASH segments and manifest
 	cmd := exec.Command("ffmpeg",
 		"-i", videoPath, // input file
 		"-c:v", "libx264", // video codec
+		"-preset", "veryfast", // faster software encoding
+		"-threads", "2", // limit CPU usage on local machines
 		"-c:a", "aac", // audio codec
 		"-bf", "1", // max 1 B-frame
 		"-keyint_min", "120", // minimum keyframe interval
@@ -185,13 +204,18 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error generating DASH content: "+err.Error()+"\n"+string(output), http.StatusInternalServerError)
 		return
 	}
+	totalFFmpegTime := time.Since(start)
+	log.Printf("FFmpeg transcoding time: %.3f ms", durationMilliseconds(totalFFmpegTime))
 
+	start = time.Now()
 	// Store the converted DASH files using VideoContentService
 	entries, err := os.ReadDir(dashDir)
 	if err != nil {
 		http.Error(w, "Error reading DASH directory: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	totalScanTime := time.Since(start)
+	log.Printf("DASH files scan time: %.3f ms", durationMilliseconds(totalScanTime))
 
 	fileCount := 0
 	expectedCount := 0
@@ -200,7 +224,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	// var wg sync.WaitGroup
 	// maxWorkers := 64
 	// sem := make(chan struct{}, maxWorkers)
-	start := time.Now()
+	start = time.Now()
 
 	// Sequential Inmplementation
 	for _, entry := range entries {
@@ -286,13 +310,21 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Storage Node write performance metrics
 	totalWriteTime := time.Since(start)
-	log.Printf("Stored %d DASH files for %s in %s total batch time", fileCount, videoId, totalWriteTime)
+	log.Printf(
+		"DASH storage time: video=%s files=%d duration=%.3f ms",
+		videoId,
+		fileCount,
+		durationMilliseconds(totalWriteTime),
+	)
 
+	start = time.Now()
 	err = s.metadataService.Create(videoId, time.Now())
 	if err != nil {
 		http.Error(w, "Error saving metadata: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	totalMetadataTime := time.Since(start)
+	log.Printf("Metadata create time: %.3f ms", durationMilliseconds(totalMetadataTime))
 
 	// Log success messages before redirection
 	log.Printf("File successfully uploaded: %s\n", header.Filename)
@@ -342,19 +374,29 @@ func (s *server) handleVideo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
-	videoId := r.URL.Path[len("/content/"):]
+	requestStart := time.Now()
+	videoId := "unknown"
+	filename := "unknown"
+	defer func() {
+		log.Printf(
+			"Content request total time: video=%s file=%s duration=%.3f ms",
+			videoId,
+			filename,
+			durationMilliseconds(time.Since(requestStart)),
+		)
+	}()
+
+	videoId = r.URL.Path[len("/content/"):]
 	parts := strings.Split(videoId, "/")
 	if len(parts) != 2 {
 		http.Error(w, "Invalid content path", http.StatusBadRequest)
 		return
 	}
 	videoId = parts[0]
-	filename := parts[1]
+	filename = parts[1]
 	log.Println("Video ID:", videoId, "Filename:", filename)
 
-	start := time.Now()
 	content, err := s.contentService.Read(videoId, filename)
-	log.Printf("Read %s/%s (%d bytes) in %s\n", videoId, filename, len(content), time.Since(start))
 
 	if err != nil || content == nil || len(content) == 0 {
 		log.Println("Video content not Found: " + filename)
@@ -380,8 +422,11 @@ func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Range")
 	w.Header().Set("Accept-Ranges", "bytes")
 
+	start := time.Now()
 	// Stream content
 	if _, err := w.Write(content); err != nil {
 		log.Printf("Error writing response: %v", err)
 	}
+	httpTime := time.Since(start)
+	log.Printf("HTTP write time: %.3f ms", durationMilliseconds(httpTime))
 }

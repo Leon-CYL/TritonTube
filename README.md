@@ -212,6 +212,54 @@ docker compose ps
 docker compose logs --follow
 ```
 
+### Profile upload and content-read latency
+
+Start the application and follow the web and storage logs:
+
+```bash
+docker compose up --build --detach
+docker compose logs --follow web storage1 storage2 storage3
+```
+
+In another terminal, upload the normalized 15-minute benchmark video. Use a
+new filename for every run because the filename determines the video ID.
+
+```bash
+curl \
+  --silent \
+  --show-error \
+  --output /dev/null \
+  --write-out '%{http_code} %{size_upload} %{time_total}\n' \
+  --form "file=@data/benchmark/15.mp4;filename=bench-15-profile-1.mp4" \
+  http://localhost:8080/upload |
+awk '{printf "HTTP status: %s\nUploaded bytes: %s\nClient time: %.3f ms\n", $1, $2, $3 * 1000}'
+```
+
+After the upload succeeds, profile a manifest read:
+
+```bash
+curl \
+  --silent \
+  --show-error \
+  --output /dev/null \
+  --write-out '%{http_code} %{size_download} %{time_total}\n' \
+  http://localhost:8080/content/bench-15-profile-1/manifest.mpd |
+awk '{printf "HTTP status: %s\nDownloaded bytes: %s\nClient time: %.3f ms\n", $1, $2, $3 * 1000}'
+```
+
+Profile a DASH segment read:
+
+```bash
+curl \
+  --silent \
+  --show-error \
+  --output /dev/null \
+  --write-out '%{http_code} %{size_download} %{time_total}\n' \
+  http://localhost:8080/content/bench-15-profile-1/chunk-0-00001.m4s |
+awk '{printf "HTTP status: %s\nDownloaded bytes: %s\nClient time: %.3f ms\n", $1, $2, $3 * 1000}'
+```
+
+
 ### Stop the application
 
 Stop and remove the containers and network while preserving uploaded videos

@@ -78,13 +78,21 @@ func (ns *NetworkVideoContentService) FindStorageAddr(str string) string {
 func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]byte, error) {
 	filepath := videoId + "/" + filename
 
+	start := time.Now()
 	storageAddr := ns.FindStorageAddr(filepath)
 	if storageAddr == "" {
 		return nil, fmt.Errorf("no valid storage address found for %s", filepath)
 	}
+	hashLookupTime := time.Since(start)
+	log.Printf("Consistent hash lookup time: %.3f ms", durationMilliseconds(hashLookupTime))
+
 	conn, err := grpc.NewClient(
 		storageAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(proto.MaxMessageSize),
+			grpc.MaxCallSendMsgSize(proto.MaxMessageSize),
+		),
 	)
 	if err != nil {
 		return nil, err
@@ -93,6 +101,7 @@ func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]b
 
 	client := proto.NewVideoContentStorageServiceClient(conn)
 
+	start = time.Now()
 	response, err := client.ReadFile(context.Background(), &proto.ReadRequest{
 		VideoId:  videoId,
 		Filename: filename,
@@ -100,6 +109,8 @@ func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]b
 	if err != nil {
 		return nil, err
 	}
+	grpcTime := time.Since(start)
+	log.Printf("gRPC read file time: %.3f ms", durationMilliseconds(grpcTime))
 
 	return response.Data, nil
 }
@@ -113,6 +124,10 @@ func (ns *NetworkVideoContentService) Write(videoId string, filename string, dat
 	conn, err := grpc.NewClient(
 		storageAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(proto.MaxMessageSize),
+			grpc.MaxCallSendMsgSize(proto.MaxMessageSize),
+		),
 	)
 	if err != nil {
 		return err
@@ -458,7 +473,14 @@ func (ns *NetworkVideoContentService) dialNode(ctx context.Context, address stri
 		return ns.dialStorageNode(address)
 	}
 
-	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(
+		address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(proto.MaxMessageSize),
+			grpc.MaxCallSendMsgSize(proto.MaxMessageSize),
+		),
+	)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -44,7 +44,10 @@ func run() error {
 
 	// use gRPC to start the server
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.MaxRecvMsgSize(proto.MaxMessageSize),
+		grpc.MaxSendMsgSize(proto.MaxMessageSize),
+	)
 
 	server := storage.NewStorageServer(baseDir)
 

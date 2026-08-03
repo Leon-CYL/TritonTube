@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 	"tritontube/internal/proto"
 )
 
@@ -86,11 +87,14 @@ func (ss *StorageServer) ReadFile(ctx context.Context, req *proto.ReadRequest) (
 		return &proto.ReadResponse{Data: nil}, err
 	}
 
+	start := time.Now()
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Printf("Storage: Read file failed: %v\n", err)
 		return &proto.ReadResponse{Data: nil}, err
 	}
+	fileReadTime := time.Since(start)
+	log.Printf("Filesystem read time: %.3f ms", float64(fileReadTime)/float64(time.Millisecond))
 
 	return &proto.ReadResponse{Data: data}, nil
 }
