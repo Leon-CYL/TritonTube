@@ -293,6 +293,40 @@ docker compose --profile tools run --rm admin add web:3343 storage3:8090
 Adding a node requires its storage container to already be running. Removing a
 node updates membership and migrates its files, but does not stop its container.
 
+### Profile node file transfers
+
+Build and start the application, then follow the web and storage logs:
+
+```bash
+docker compose up --build --detach
+docker compose logs --follow web storage1 storage2 storage3
+```
+
+In another terminal, confirm the current storage membership:
+
+```bash
+docker compose --profile tools run --rm admin list web:3343
+```
+
+Profile sequential file transfer while removing `storage3`:
+
+```bash
+docker compose --profile tools run --rm \
+  admin remove web:3343 storage3:8090
+```
+
+Profile sequential file transfer while adding `storage3` back:
+
+```bash
+docker compose --profile tools run --rm \
+  admin add web:3343 storage3:8090
+```
+
+Keep the `storage3` container running during both operations. The web logs
+report `ListFiles`, sequential `ReadFile`, sequential `WriteFile`, total
+migration, average-per-file, and complete operation latency in milliseconds
+with three decimal places.
+
 ### Run tests in Docker
 
 Run all tests in an isolated Go builder container:
