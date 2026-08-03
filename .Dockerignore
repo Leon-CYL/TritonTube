@@ -18,3 +18,8 @@ coverage.html
 
 README.md
 Instruction.md
+
+data
+benchmarks/results
+coverage.out
+coverage.html
