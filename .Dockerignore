@@ -8,6 +8,7 @@ data1
 data2
 data3
 storage
+tools/wrk2
 
 coverage.out
 coverage.html

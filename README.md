@@ -35,28 +35,6 @@ flowchart LR
 
 The web service hashes each `videoID/filename` key and selects the first storage node clockwise on the ring. Adding a node copies only the files reassigned to it. Removing a node copies its files to the next owner before publishing the updated ring.
 
-## Features
-
-- MP4 upload over HTTP
-- MPEG-DASH transcoding through FFmpeg
-- etcd-backed video metadata
-- Filesystem-backed content storage
-- Protobuf and gRPC APIs for individual and batch operations
-- Consistent-hash placement across storage nodes
-- Transactional node membership publication after successful migration
-- Concurrent upload workers with partial-failure handling
-- Race-safe membership reads and updates
-- Unit and in-process gRPC tests
-
-<!-- ## Current limitations
-
-- The hash ring currently uses one point per storage server; virtual nodes are not implemented.
-- Each video file has one authoritative owner. Storage replication and automatic failover are not implemented.
-- Adding a node copies reassigned files but does not selectively delete the old source copies.
-- Upload processing is synchronous; the HTTP request remains open during transcoding and storage.
-- The web service supports etcd metadata and network storage only.
-- Transport security and authentication are not implemented. -->
-
 ## Requirements
 
 - [Go 1.24.1 or newer](https://go.dev/dl/)
