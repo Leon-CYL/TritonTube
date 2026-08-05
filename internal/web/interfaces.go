@@ -13,7 +13,14 @@ type VideoMetadataService interface {
 	Create(videoId string, uploadedAt time.Time) error
 }
 
+type ContentFile struct {
+	VideoID  string
+	Filename string
+	Data     []byte
+}
+
 type VideoContentService interface {
 	Read(videoId string, filename string) ([]byte, error)
 	Write(videoId string, filename string, data []byte) error
+	WriteBatch(files []ContentFile) (int, error)
 }

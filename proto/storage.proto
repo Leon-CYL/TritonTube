@@ -45,7 +45,11 @@ message ReadResponse {
     bytes data = 1;
 }
 
-message BatchReadRequest {}
+message BatchReadRequest {
+    // Empty requests preserve the original behavior and read every stored
+    // file. Supplying requests bounds the batch to the named files.
+    repeated ReadRequest requests = 1;
+}
 
 message BatchReadResponse {
     repeated FileEntry entries = 1;

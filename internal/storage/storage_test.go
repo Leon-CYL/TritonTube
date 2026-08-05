@@ -31,18 +31,15 @@ func TestWriteFile(t *testing.T) {
 		t.Fatalf("Write File Error: %v\n", err)
 	}
 
-	// Check base directory exist
 	info, err := os.Stat(server.basePath)
 	if err != nil {
 		t.Fatalf("Stat Base Directory Error: %v\n", err)
 	}
 
-	// Check whether base directory is a directory
 	if !info.IsDir() {
 		t.Fatalf("The Base dir should be a directory: %v\n", info)
 	}
 
-	// Check whether the file is written to the file system
 	filePath := filepath.Join(server.basePath, writeReq.VideoId, writeReq.Filename)
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {

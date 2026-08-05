@@ -28,7 +28,6 @@ func run() error {
 	port := flag.Int("port", 8090, "Port number for the server")
 	flag.Parse()
 
-	// Validate arguments
 	if *port <= 0 {
 		return errors.New("port number must be positive")
 	}
@@ -41,8 +40,6 @@ func run() error {
 	fmt.Printf("Host: %s\n", *host)
 	fmt.Printf("Port: %d\n", *port)
 	fmt.Printf("Base Directory: %s\n", baseDir)
-
-	// use gRPC to start the server
 
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(proto.MaxMessageSize),

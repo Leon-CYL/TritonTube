@@ -1,5 +1,3 @@
-// storage.go: Filesystem storage for video content files.
-
 package storage
 
 import (
@@ -15,7 +13,6 @@ import (
 	"tritontube/internal/proto"
 )
 
-// Implement a network video content service (server)
 type StorageServer struct {
 	proto.UnimplementedVideoContentStorageServiceServer
 	basePath string
@@ -99,8 +96,29 @@ func (ss *StorageServer) ReadFile(ctx context.Context, req *proto.ReadRequest) (
 	return &proto.ReadResponse{Data: data}, nil
 }
 
-// ReadFiles reads every regular file under the server's storage directory.
+// ReadFiles reads requested files, or every stored file when the request is empty.
 func (ss *StorageServer) ReadFiles(ctx context.Context, req *proto.BatchReadRequest) (*proto.BatchReadResponse, error) {
+	if len(req.GetRequests()) > 0 {
+		entries := make([]*proto.FileEntry, 0, len(req.Requests))
+		for _, request := range req.Requests {
+			if err := ctx.Err(); err != nil {
+				return &proto.BatchReadResponse{Entries: entries}, err
+			}
+			filePath, err := ss.filePath(request.VideoId, request.Filename)
+			if err != nil {
+				return &proto.BatchReadResponse{Entries: entries}, err
+			}
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return &proto.BatchReadResponse{Entries: entries}, fmt.Errorf("read %q: %w", filePath, err)
+			}
+			entries = append(entries, &proto.FileEntry{
+				VideoId: request.VideoId, Filename: request.Filename, Data: data,
+			})
+		}
+		return &proto.BatchReadResponse{Entries: entries}, nil
+	}
+
 	entries := make([]*proto.FileEntry, 0)
 
 	err := filepath.WalkDir(ss.basePath, func(path string, entry fs.DirEntry, walkErr error) error {

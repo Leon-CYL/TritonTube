@@ -35,11 +35,18 @@ flowchart LR
 
 The web service hashes each `videoID/filename` key and selects the first storage node clockwise on the ring. Adding a node copies only the files reassigned to it. Removing a node copies its files to the next owner before publishing the updated ring.
 
+Uploads use a bounded pool of at most 64 workers. Each worker reads up to four
+DASH files and sends them with batch gRPC writes, grouped by their storage-node
+owner. Node migration uses bounded batches of four files for both `ReadFiles`
+and `WriteFiles`. Small batches keep requests below the configured 16 MiB gRPC
+message limit while reducing per-file RPC overhead.
+
 ## Requirements
 
 - [Go 1.24.1 or newer](https://go.dev/dl/)
 - [FFmpeg](https://ffmpeg.org/)
-- [etcd](https://etcd.io/)
+- [etcd](https://etcd.io/) for host-based local runs
+- [Docker](https://docs.docker.com/engine/install/) with Docker Compose for containerized runs
 - `protoc`, `protoc-gen-go`, and `protoc-gen-go-grpc` when regenerating protobuf code
 
 On macOS with Homebrew:
@@ -170,7 +177,7 @@ go run ./cmd/admin remove localhost:3343 localhost:8096
 
 ## Docker commands
 
-Docker Compose starts one etcd member, three persistent storage nodes, and the
+Docker Compose starts three etcd members, three persistent storage nodes, and the
 web service. Only port `8080` is published to the host.
 
 ### Start the application
@@ -286,14 +293,14 @@ In another terminal, confirm the current storage membership:
 docker compose --profile tools run --rm admin list web:3343
 ```
 
-Profile sequential file transfer while removing `storage3`:
+Profile batched file transfer while removing `storage3`:
 
 ```bash
 docker compose --profile tools run --rm \
   admin remove web:3343 storage3:8090
 ```
 
-Profile sequential file transfer while adding `storage3` back:
+Profile batched file transfer while adding `storage3` back:
 
 ```bash
 docker compose --profile tools run --rm \
@@ -301,9 +308,8 @@ docker compose --profile tools run --rm \
 ```
 
 Keep the `storage3` container running during both operations. The web logs
-report `ListFiles`, sequential `ReadFile`, sequential `WriteFile`, total
-migration, average-per-file, and complete operation latency in milliseconds
-with three decimal places.
+report `ListFiles`, batch `ReadFiles`, batch `WriteFiles`, total migration,
+average-per-file, and complete operation latency in milliseconds.
 
 ### Run tests in Docker
 
@@ -320,6 +326,90 @@ default command:
 docker compose --profile test run --rm test go test -race ./...
 docker compose --profile test run --rm test go test -v ./internal/web
 ```
+
+## Four-instance AWS deployment
+
+[`compose.aws.yaml`](compose.aws.yaml) runs the same project on four Amazon
+Linux EC2 instances using host networking:
+
+| Instance | Compose profile | Services |
+| --- | --- | --- |
+| Web | `web` | HTTP web service and admin gRPC listener |
+| Storage node 1 | `node1` | storage1 and etcd1 |
+| Storage node 2 | `node2` | storage2 and etcd2 |
+| Storage node 3 | `node3` | storage3 and etcd3 |
+
+All instances must be in the same VPC and use private IPv4 addresses for
+cluster traffic. Copy [`.env.aws.example`](.env.aws.example) to `.env.aws` on
+every instance and replace the examples with the three storage-node private
+addresses:
+
+```dotenv
+ETCD1_IP=172.31.0.11
+ETCD2_IP=172.31.0.12
+ETCD3_IP=172.31.0.13
+```
+
+Start the storage/etcd instances first:
+
+```bash
+# Run on storage node 1
+docker compose --env-file .env.aws -f compose.aws.yaml --profile node1 up -d --build
+
+# Run on storage node 2
+docker compose --env-file .env.aws -f compose.aws.yaml --profile node2 up -d --build
+
+# Run on storage node 3
+docker compose --env-file .env.aws -f compose.aws.yaml --profile node3 up -d --build
+```
+
+Then start the web instance:
+
+```bash
+docker compose --env-file .env.aws -f compose.aws.yaml --profile web up -d --build
+```
+
+Check each instance with the matching profile:
+
+```bash
+docker compose --env-file .env.aws -f compose.aws.yaml --profile node1 ps
+docker compose --env-file .env.aws -f compose.aws.yaml logs --follow storage1 etcd1
+```
+
+The EC2 security group should expose port `22` only to the developer's IP and
+port `8080` to the intended web clients. Ports `2379`, `2380`, `8090`, and
+`3343` should accept traffic only from the same security group.
+
+### AWS performance test
+
+Copy benchmark videos to the web instance, then run the upload test on that
+instance so public-network latency is excluded. Use a new filename for each
+run because the filename determines the video ID.
+
+```bash
+curl \
+  --silent \
+  --show-error \
+  --output /dev/null \
+  --write-out 'HTTP %{http_code} uploaded=%{size_upload} total=%{time_total}s\n' \
+  --form 'file=@/home/ec2-user/15.mp4;filename=bench-15-batch-1.mp4' \
+  http://127.0.0.1:8080/upload
+```
+
+Measure manifest and segment reads:
+
+```bash
+curl --silent --show-error --output /dev/null \
+  --write-out 'HTTP %{http_code} bytes=%{size_download} total=%{time_total}s\n' \
+  http://127.0.0.1:8080/content/bench-15-batch-1/manifest.mpd
+
+curl --silent --show-error --output /dev/null \
+  --write-out 'HTTP %{http_code} bytes=%{size_download} total=%{time_total}s\n' \
+  http://127.0.0.1:8080/content/bench-15-batch-1/chunk-0-00001.m4s
+```
+
+Because the protobuf batch-read request changed, deploy and rebuild all three
+storage profiles before rebuilding the web profile.
 
 ## Development
 

@@ -362,7 +362,10 @@ func (x *ReadResponse) GetData() []byte {
 }
 
 type BatchReadRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Empty requests preserve the original behavior and read every stored
+	// file. Supplying requests bounds the batch to the named files.
+	Requests      []*ReadRequest `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -395,6 +398,13 @@ func (x *BatchReadRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use BatchReadRequest.ProtoReflect.Descriptor instead.
 func (*BatchReadRequest) Descriptor() ([]byte, []int) {
 	return file_proto_storage_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *BatchReadRequest) GetRequests() []*ReadRequest {
+	if x != nil {
+		return x.Requests
+	}
+	return nil
 }
 
 type BatchReadResponse struct {
@@ -464,8 +474,9 @@ const file_proto_storage_proto_rawDesc = "" +
 	"\avideoId\x18\x01 \x01(\tR\avideoId\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\"\"\n" +
 	"\fReadResponse\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\"\x12\n" +
-	"\x10BatchReadRequest\"D\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\"G\n" +
+	"\x10BatchReadRequest\x123\n" +
+	"\brequests\x18\x01 \x03(\v2\x17.tritontube.ReadRequestR\brequests\"D\n" +
 	"\x11BatchReadResponse\x12/\n" +
 	"\aentries\x18\x01 \x03(\v2\x15.tritontube.FileEntryR\aentries2\xfe\x02\n" +
 	"\x1aVideoContentStorageService\x12@\n" +
@@ -502,22 +513,23 @@ var file_proto_storage_proto_goTypes = []any{
 }
 var file_proto_storage_proto_depIdxs = []int32{
 	2, // 0: tritontube.BatchWriteRequest.entries:type_name -> tritontube.FileEntry
-	2, // 1: tritontube.BatchReadResponse.entries:type_name -> tritontube.FileEntry
-	0, // 2: tritontube.VideoContentStorageService.WriteFile:input_type -> tritontube.WriteRequest
-	3, // 3: tritontube.VideoContentStorageService.WriteFiles:input_type -> tritontube.BatchWriteRequest
-	5, // 4: tritontube.VideoContentStorageService.ReadFile:input_type -> tritontube.ReadRequest
-	7, // 5: tritontube.VideoContentStorageService.ReadFiles:input_type -> tritontube.BatchReadRequest
-	7, // 6: tritontube.VideoContentStorageService.ListFiles:input_type -> tritontube.BatchReadRequest
-	1, // 7: tritontube.VideoContentStorageService.WriteFile:output_type -> tritontube.WriteResponse
-	4, // 8: tritontube.VideoContentStorageService.WriteFiles:output_type -> tritontube.BatchWriteResponse
-	6, // 9: tritontube.VideoContentStorageService.ReadFile:output_type -> tritontube.ReadResponse
-	8, // 10: tritontube.VideoContentStorageService.ReadFiles:output_type -> tritontube.BatchReadResponse
-	8, // 11: tritontube.VideoContentStorageService.ListFiles:output_type -> tritontube.BatchReadResponse
-	7, // [7:12] is the sub-list for method output_type
-	2, // [2:7] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	5, // 1: tritontube.BatchReadRequest.requests:type_name -> tritontube.ReadRequest
+	2, // 2: tritontube.BatchReadResponse.entries:type_name -> tritontube.FileEntry
+	0, // 3: tritontube.VideoContentStorageService.WriteFile:input_type -> tritontube.WriteRequest
+	3, // 4: tritontube.VideoContentStorageService.WriteFiles:input_type -> tritontube.BatchWriteRequest
+	5, // 5: tritontube.VideoContentStorageService.ReadFile:input_type -> tritontube.ReadRequest
+	7, // 6: tritontube.VideoContentStorageService.ReadFiles:input_type -> tritontube.BatchReadRequest
+	7, // 7: tritontube.VideoContentStorageService.ListFiles:input_type -> tritontube.BatchReadRequest
+	1, // 8: tritontube.VideoContentStorageService.WriteFile:output_type -> tritontube.WriteResponse
+	4, // 9: tritontube.VideoContentStorageService.WriteFiles:output_type -> tritontube.BatchWriteResponse
+	6, // 10: tritontube.VideoContentStorageService.ReadFile:output_type -> tritontube.ReadResponse
+	8, // 11: tritontube.VideoContentStorageService.ReadFiles:output_type -> tritontube.BatchReadResponse
+	8, // 12: tritontube.VideoContentStorageService.ListFiles:output_type -> tritontube.BatchReadResponse
+	8, // [8:13] is the sub-list for method output_type
+	3, // [3:8] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_proto_storage_proto_init() }

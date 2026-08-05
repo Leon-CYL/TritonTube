@@ -41,34 +41,27 @@ func main() {
 }
 
 func run() error {
-	// Define flags
 	port := flag.Int("port", 8080, "Port number for the web server")
 	host := flag.String("host", "localhost", "Host address for the web server")
 
-	// Set custom usage message
 	flag.Usage = printUsage
 
-	// Parse flags
 	flag.Parse()
 
-	// Check if the correct number of positional arguments is provided
 	if len(flag.Args()) != 4 {
 		return errors.New("incorrect number of arguments; expected metadata and content configuration")
 	}
 
-	// Parse positional arguments
 	metadataServiceType := flag.Arg(0)
 	metadataServiceOptions := flag.Arg(1)
 	contentServiceType := flag.Arg(2)
 	contentServiceOptions := flag.Arg(3)
 
-	// Validate port number (already an int from flag, check if positive)
 	if *port <= 0 {
 		return fmt.Errorf("invalid port number: %d", *port)
 	}
 	var err error
 
-	// Construct metadata service
 	var metadataService web.VideoMetadataService
 	fmt.Println("Creating metadata service of type", metadataServiceType, "with options", metadataServiceOptions)
 	switch metadataServiceType {
@@ -86,7 +79,6 @@ func run() error {
 		return fmt.Errorf("unknown metadata service type %q; supported: etcd", metadataServiceType)
 	}
 
-	// Construct content service
 	var contentService web.VideoContentService
 	var grpcServer *grpc.Server
 	fmt.Println("Creating content service of type", contentServiceType, "with options", contentServiceOptions)
@@ -120,7 +112,6 @@ func run() error {
 		return fmt.Errorf("unknown content service type %q; supported: nw", contentServiceType)
 	}
 
-	// Start the web server
 	server := web.NewServer(metadataService, contentService)
 	listenAddr := fmt.Sprintf("%s:%d", *host, *port)
 	lis, err := net.Listen("tcp", listenAddr)

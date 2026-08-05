@@ -1,5 +1,3 @@
-// Lab 7: Implement a web server
-
 package web
 
 import (
@@ -16,7 +14,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+)
+
+const (
+	uploadWorkerLimit = 64
+	uploadBatchSize   = 4
 )
 
 type server struct {
@@ -69,14 +73,12 @@ func (s *server) Shutdown(ctx context.Context) error {
 }
 
 func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	// Fetch all video metadata from the service
 	videos, err := s.metadataService.List()
 	if err != nil {
 		http.Error(w, "Failed to retrieve video list", http.StatusInternalServerError)
 		return
 	}
 
-	// Prepare the video data for the template
 	var videoList []VideoData
 	for _, video := range videos {
 		escapedId := url.PathEscape(video.Id)
@@ -87,18 +89,15 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Parse and render the template
 	tmpl, err := template.New("index").Parse(indexHTML)
 	if err != nil {
 		http.Error(w, "Error parsing template", http.StatusInternalServerError)
 		return
 	}
 
-	// Set response headers
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 
-	// Execute the template with the video list
 	err = tmpl.Execute(w, videoList)
 	if err != nil {
 		log.Println("Error rendering template:", err)
@@ -118,7 +117,6 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Retrieve the file from form data
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, "Error retrieving file", http.StatusBadRequest)
@@ -141,7 +139,6 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	totalCheckTime := time.Since(start)
 	log.Printf("Metadata duplicate check time: %.3f ms", durationMilliseconds(totalCheckTime))
 
-	// Save the uploaded file to disk
 	uploadDir := filepath.Join(os.TempDir(), "videos")
 
 	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
@@ -166,7 +163,6 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	totalCopyTime := time.Since(start)
 	log.Printf("MP4 file copy time: %.3f ms", durationMilliseconds(totalCopyTime))
 
-	// Create a directory for DASH output using the video ID
 	dashDir := filepath.Join(uploadDir, videoId)
 
 	if err := os.MkdirAll(dashDir, os.ModePerm); err != nil {
@@ -177,7 +173,6 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	manifestPath := filepath.Join(dashDir, "manifest.mpd")
 
 	start = time.Now()
-	// Run FFmpeg to generate MPEG-DASH segments and manifest
 	cmd := exec.Command("ffmpeg",
 		"-i", videoPath, // input file
 		"-c:v", "libx264", // video codec
@@ -199,7 +194,6 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		manifestPath, // output manifest file path
 	)
 
-	// Run the FFmpeg command and capture any errors
 	if output, err := cmd.CombinedOutput(); err != nil {
 		http.Error(w, "Error generating DASH content: "+err.Error()+"\n"+string(output), http.StatusInternalServerError)
 		return
@@ -208,7 +202,6 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	log.Printf("FFmpeg transcoding time: %.3f ms", durationMilliseconds(totalFFmpegTime))
 
 	start = time.Now()
-	// Store the converted DASH files using VideoContentService
 	entries, err := os.ReadDir(dashDir)
 	if err != nil {
 		http.Error(w, "Error reading DASH directory: "+err.Error(), http.StatusInternalServerError)
@@ -217,81 +210,8 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	totalScanTime := time.Since(start)
 	log.Printf("DASH files scan time: %.3f ms", durationMilliseconds(totalScanTime))
 
-	fileCount := 0
-	expectedCount := 0
-	var uploadErr error
-	// var mutex sync.Mutex
-	// var wg sync.WaitGroup
-	// maxWorkers := 64
-	// sem := make(chan struct{}, maxWorkers)
 	start = time.Now()
-
-	// Sequential Inmplementation
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		expectedCount++
-
-		fileName := entry.Name()
-		filePath := filepath.Join(dashDir, fileName)
-
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			uploadErr = fmt.Errorf("read DASH file %s: %w", fileName, err)
-			break
-		}
-
-		if err := s.contentService.Write(videoId, fileName, data); err != nil {
-			uploadErr = fmt.Errorf("store DASH file %s: %w", fileName, err)
-			break
-		}
-
-		fileCount++
-	}
-
-	// Bounded Thread Pool implementation
-	// for _, entry := range entries {
-	// 	if entry.IsDir() {
-	// 		continue
-	// 	}
-
-	// 	expectedCount++
-	// 	wg.Add(1)
-	// 	sem <- struct{}{}
-	// 	go func(entry os.DirEntry) {
-	// 		defer wg.Done()
-	// 		defer func() { <-sem }()
-
-	// 		fileName := entry.Name()
-	// 		filePath := filepath.Join(dashDir, fileName)
-
-	// 		data, err := os.ReadFile(filePath)
-	// 		if err != nil {
-	// 			mutex.Lock()
-	// 			if uploadErr == nil {
-	// 				uploadErr = fmt.Errorf("read DASH file %s: %w", fileName, err)
-	// 			}
-	// 			mutex.Unlock()
-	// 			return
-	// 		}
-
-	// 		if err := s.contentService.Write(videoId, fileName, data); err != nil {
-	// 			mutex.Lock()
-	// 			if uploadErr == nil {
-	// 				uploadErr = fmt.Errorf("store DASH file %s: %w", fileName, err)
-	// 			}
-	// 			mutex.Unlock()
-	// 			return
-	// 		}
-
-	// 		mutex.Lock()
-	// 		fileCount++
-	// 		mutex.Unlock()
-	// 	}(entry)
-	// }
-	// wg.Wait()
+	fileCount, expectedCount, uploadErr := s.storeDASHFiles(videoId, dashDir, entries)
 
 	if uploadErr != nil {
 		log.Printf("DASH upload failed after storing %d/%d files: %v", fileCount, expectedCount, uploadErr)
@@ -308,7 +228,6 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Storage Node write performance metrics
 	totalWriteTime := time.Since(start)
 	log.Printf(
 		"DASH storage time: video=%s files=%d duration=%.3f ms",
@@ -326,27 +245,100 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	totalMetadataTime := time.Since(start)
 	log.Printf("Metadata create time: %.3f ms", durationMilliseconds(totalMetadataTime))
 
-	// Log success messages before redirection
 	log.Printf("File successfully uploaded: %s\n", header.Filename)
 	log.Printf("DASH content generated at: %s\n", manifestPath)
 
-	// Redirect to the landing page after successful upload
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+// storeDASHFiles uses a fixed-size worker pool. Each job reads a small group of
+// DASH files and sends it through one or more batch gRPC writes. The number of
+// goroutines and the in-memory data per job remain bounded for long videos.
+func (s *server) storeDASHFiles(videoID, dashDir string, entries []os.DirEntry) (int, int, error) {
+	regularEntries := make([]os.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			regularEntries = append(regularEntries, entry)
+		}
+	}
+
+	expectedCount := len(regularEntries)
+	if expectedCount == 0 {
+		return 0, 0, nil
+	}
+
+	jobs := make(chan []os.DirEntry)
+	workerCount := (expectedCount + uploadBatchSize - 1) / uploadBatchSize
+	if workerCount > uploadWorkerLimit {
+		workerCount = uploadWorkerLimit
+	}
+
+	var wg sync.WaitGroup
+	var resultMu sync.Mutex
+	writtenCount := 0
+	var firstErr error
+
+	worker := func() {
+		defer wg.Done()
+		for batch := range jobs {
+			files := make([]ContentFile, 0, len(batch))
+			for _, entry := range batch {
+				filename := entry.Name()
+				data, err := os.ReadFile(filepath.Join(dashDir, filename))
+				if err != nil {
+					resultMu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("read DASH file %s: %w", filename, err)
+					}
+					resultMu.Unlock()
+					files = nil
+					break
+				}
+				files = append(files, ContentFile{VideoID: videoID, Filename: filename, Data: data})
+			}
+			if len(files) == 0 {
+				continue
+			}
+
+			count, err := s.contentService.WriteBatch(files)
+			resultMu.Lock()
+			writtenCount += count
+			if err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("store DASH batch: %w", err)
+			} else if err == nil && count != len(files) && firstErr == nil {
+				firstErr = fmt.Errorf("store DASH batch: wrote %d of %d files", count, len(files))
+			}
+			resultMu.Unlock()
+		}
+	}
+
+	wg.Add(workerCount)
+	for range workerCount {
+		go worker()
+	}
+	for start := 0; start < len(regularEntries); start += uploadBatchSize {
+		end := start + uploadBatchSize
+		if end > len(regularEntries) {
+			end = len(regularEntries)
+		}
+		jobs <- regularEntries[start:end]
+	}
+	close(jobs)
+	wg.Wait()
+
+	return writtenCount, expectedCount, firstErr
+}
+
 func (s *server) handleVideo(w http.ResponseWriter, r *http.Request) {
-	// Extract the video ID from the URL
 	videoId := r.URL.Path[len("/videos/"):]
 	log.Println("Video ID:", videoId)
 
-	// Retrieve video metadata
 	metadata, err := s.metadataService.Read(videoId)
 	if err != nil || metadata == nil {
 		http.Error(w, "Video not found: "+videoId, http.StatusNotFound)
 		return
 	}
 
-	// Prepare the data for the template
 	data := struct {
 		Id         string
 		UploadedAt string
@@ -355,18 +347,15 @@ func (s *server) handleVideo(w http.ResponseWriter, r *http.Request) {
 		UploadedAt: metadata.UploadedAt.Format("2006-01-02 15:04:05"),
 	}
 
-	// Parse and render the video template
 	tmpl, err := template.New("video").Parse(videoHTML)
 	if err != nil {
 		http.Error(w, "Error parsing video template", http.StatusInternalServerError)
 		return
 	}
 
-	// Set response headers
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 
-	// Execute the template with the video metadata
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Println("Error rendering video template:", err)
 		http.Error(w, "Failed to render video page", http.StatusInternalServerError)
@@ -404,7 +393,6 @@ func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set headers
 	var contentType string
 	switch {
 	case strings.HasSuffix(filename, ".mpd"):
@@ -423,7 +411,6 @@ func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Accept-Ranges", "bytes")
 
 	start := time.Now()
-	// Stream content
 	if _, err := w.Write(content); err != nil {
 		log.Printf("Error writing response: %v", err)
 	}

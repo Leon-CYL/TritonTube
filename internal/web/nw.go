@@ -1,5 +1,3 @@
-// nw.go
-
 package web
 
 import (
@@ -35,10 +33,11 @@ type storageRPCClient interface {
 	ListFiles(context.Context, *proto.BatchReadRequest, ...grpc.CallOption) (*proto.BatchReadResponse, error)
 	ReadFile(context.Context, *proto.ReadRequest, ...grpc.CallOption) (*proto.ReadResponse, error)
 	WriteFile(context.Context, *proto.WriteRequest, ...grpc.CallOption) (*proto.WriteResponse, error)
-	// Batch migration baseline disabled for Stage 3:
-	// ReadFiles(context.Context, *proto.BatchReadRequest, ...grpc.CallOption) (*proto.BatchReadResponse, error)
-	// WriteFiles(context.Context, *proto.BatchWriteRequest, ...grpc.CallOption) (*proto.BatchWriteResponse, error)
+	ReadFiles(context.Context, *proto.BatchReadRequest, ...grpc.CallOption) (*proto.BatchReadResponse, error)
+	WriteFiles(context.Context, *proto.BatchWriteRequest, ...grpc.CallOption) (*proto.BatchWriteResponse, error)
 }
+
+const storageBatchSize = 4
 
 var _ VideoContentService = (*NetworkVideoContentService)(nil)
 
@@ -116,38 +115,50 @@ func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]b
 }
 
 func (ns *NetworkVideoContentService) Write(videoId string, filename string, data []byte) error {
-	filepath := videoId + "/" + filename
-	storageAddr := ns.FindStorageAddr(filepath)
-	if storageAddr == "" {
-		return fmt.Errorf("no valid storage address found for %s", filepath)
+	count, err := ns.WriteBatch([]ContentFile{{VideoID: videoId, Filename: filename, Data: data}})
+	if err == nil && count != 1 {
+		return fmt.Errorf("wrote %d of 1 file", count)
 	}
-	conn, err := grpc.NewClient(
-		storageAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(proto.MaxMessageSize),
-			grpc.MaxCallSendMsgSize(proto.MaxMessageSize),
-		),
-	)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	return err
+}
 
-	client := proto.NewVideoContentStorageServiceClient(conn)
-
-	req := &proto.WriteRequest{
-		VideoId:  videoId,
-		Filename: filename,
-		Data:     data,
+func (ns *NetworkVideoContentService) WriteBatch(files []ContentFile) (int, error) {
+	grouped := make(map[string][]*proto.FileEntry)
+	for _, file := range files {
+		key := file.VideoID + "/" + file.Filename
+		storageAddr := ns.FindStorageAddr(key)
+		if storageAddr == "" {
+			return 0, fmt.Errorf("no valid storage address found for %s", key)
+		}
+		grouped[storageAddr] = append(grouped[storageAddr], &proto.FileEntry{
+			VideoId: file.VideoID, Filename: file.Filename, Data: file.Data,
+		})
 	}
 
-	_, err = client.WriteFile(context.Background(), req)
-	if err != nil {
-		return err
+	written := 0
+	for storageAddr, entries := range grouped {
+		client, closeClient, err := ns.dialNode(context.Background(), storageAddr)
+		if err != nil {
+			return written, fmt.Errorf("connect to storage node %s: %w", storageAddr, err)
+		}
+		for start := 0; start < len(entries); start += storageBatchSize {
+			end := min(start+storageBatchSize, len(entries))
+			response, writeErr := client.WriteFiles(context.Background(), &proto.BatchWriteRequest{Entries: entries[start:end]})
+			if writeErr != nil {
+				closeClient()
+				return written, fmt.Errorf("batch write to %s: %w", storageAddr, writeErr)
+			}
+			if response == nil || response.Cnt != uint32(end-start) {
+				closeClient()
+				return written, fmt.Errorf("batch write to %s wrote %d of %d files", storageAddr, response.GetCnt(), end-start)
+			}
+			written += int(response.Cnt)
+		}
+		if err := closeClient(); err != nil {
+			return written, err
+		}
 	}
-
-	return nil
+	return written, nil
 }
 
 func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.AddNodeRequest) (*proto.AddNodeResponse, error) {
@@ -241,11 +252,9 @@ func (ns *NetworkVideoContentService) AddNode(ctx context.Context, req *proto.Ad
 	count := len(filesToMigrate)
 	start = time.Now()
 
-	// Batch ReadFiles/WriteFiles migration is intentionally disabled for the
-	// Stage 3 sequential baseline. Transfer one file per RPC.
-	written, readTime, writeTime, err := migrateFilesSequential(ctx, srcClient, destClient, filesToMigrate)
-	log.Printf("AddNode sequential ReadFile time: %.3f ms", durationMilliseconds(readTime))
-	log.Printf("AddNode sequential WriteFile time: %.3f ms", durationMilliseconds(writeTime))
+	written, readTime, writeTime, err := migrateFilesBatch(ctx, srcClient, destClient, filesToMigrate)
+	log.Printf("AddNode batch ReadFiles time: %.3f ms", durationMilliseconds(readTime))
+	log.Printf("AddNode batch WriteFiles time: %.3f ms", durationMilliseconds(writeTime))
 	if err != nil {
 		return &proto.AddNodeResponse{MigratedFileCount: int32(written)}, err
 	}
@@ -302,14 +311,12 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 	peerTime := time.Since(start)
 	log.Printf("Peer look up time: %.3f ms\n", durationMilliseconds(peerTime))
 
-	// connect the source(removed) server
 	srcClient, closeSource, err := ns.dialNode(ctx, req.NodeAddress)
 	if err != nil {
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
 	}
 	defer closeSource()
 
-	// connect the destination server
 	dstClient, closeDestination, err := ns.dialNode(ctx, peerAddr)
 	if err != nil {
 		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
@@ -317,7 +324,6 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 	defer closeDestination()
 
 	start = time.Now()
-	// Assign files from the removed server to the neighbor server based on consistant hashing
 	response, err := srcClient.ListFiles(ctx, &proto.BatchReadRequest{})
 	if err != nil {
 		log.Printf("ListFiles RPC failed: %v\n", err)
@@ -331,11 +337,9 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 	log.Printf("Number of files: %v\n", len(response.Entries))
 
 	start = time.Now()
-	// Batch ReadFiles/WriteFiles migration is intentionally disabled for the
-	// Stage 3 sequential baseline. Transfer one file per RPC.
-	written, readTime, writeTime, err := migrateFilesSequential(ctx, srcClient, dstClient, response.Entries)
-	log.Printf("RemoveNode sequential ReadFile time: %.3f ms", durationMilliseconds(readTime))
-	log.Printf("RemoveNode sequential WriteFile time: %.3f ms", durationMilliseconds(writeTime))
+	written, readTime, writeTime, err := migrateFilesBatch(ctx, srcClient, dstClient, response.Entries)
+	log.Printf("RemoveNode batch ReadFiles time: %.3f ms", durationMilliseconds(readTime))
+	log.Printf("RemoveNode batch WriteFiles time: %.3f ms", durationMilliseconds(writeTime))
 	if err != nil {
 		return &proto.RemoveNodeResponse{MigratedFileCount: int32(written)}, err
 	}
@@ -357,7 +361,7 @@ func (ns *NetworkVideoContentService) RemoveNode(ctx context.Context, req *proto
 	return &proto.RemoveNodeResponse{MigratedFileCount: int32(len(response.Entries))}, nil
 }
 
-func migrateFilesSequential(
+func migrateFilesBatch(
 	ctx context.Context,
 	source storageRPCClient,
 	destination storageRPCClient,
@@ -365,120 +369,39 @@ func migrateFilesSequential(
 ) (int, time.Duration, time.Duration, error) {
 	var totalReadTime time.Duration
 	var totalWriteTime time.Duration
+	written := 0
 
-	for index, entry := range entries {
+	for start := 0; start < len(entries); start += storageBatchSize {
+		end := min(start+storageBatchSize, len(entries))
+		requests := make([]*proto.ReadRequest, 0, end-start)
+		for _, entry := range entries[start:end] {
+			requests = append(requests, &proto.ReadRequest{VideoId: entry.VideoId, Filename: entry.Filename})
+		}
+
 		readStart := time.Now()
-		readResponse, err := source.ReadFile(ctx, &proto.ReadRequest{
-			VideoId:  entry.VideoId,
-			Filename: entry.Filename,
-		})
+		readResponse, err := source.ReadFiles(ctx, &proto.BatchReadRequest{Requests: requests})
 		totalReadTime += time.Since(readStart)
 		if err != nil {
-			return index, totalReadTime, totalWriteTime, fmt.Errorf("read %s/%s: %w", entry.VideoId, entry.Filename, err)
+			return written, totalReadTime, totalWriteTime, fmt.Errorf("read batch starting at file %d: %w", start, err)
 		}
-		if readResponse == nil {
-			return index, totalReadTime, totalWriteTime, fmt.Errorf("read %s/%s: empty response", entry.VideoId, entry.Filename)
+		if readResponse == nil || len(readResponse.Entries) != end-start {
+			return written, totalReadTime, totalWriteTime, fmt.Errorf("read batch returned %d of %d files", len(readResponse.GetEntries()), end-start)
 		}
 
 		writeStart := time.Now()
-		_, err = destination.WriteFile(ctx, &proto.WriteRequest{
-			VideoId:  entry.VideoId,
-			Filename: entry.Filename,
-			Data:     readResponse.Data,
-		})
+		writeResponse, err := destination.WriteFiles(ctx, &proto.BatchWriteRequest{Entries: readResponse.Entries})
 		totalWriteTime += time.Since(writeStart)
 		if err != nil {
-			return index, totalReadTime, totalWriteTime, fmt.Errorf("write %s/%s: %w", entry.VideoId, entry.Filename, err)
+			return written, totalReadTime, totalWriteTime, fmt.Errorf("write batch starting at file %d: %w", start, err)
 		}
+		if writeResponse == nil || writeResponse.Cnt != uint32(end-start) {
+			return written, totalReadTime, totalWriteTime, fmt.Errorf("write batch wrote %d of %d files", writeResponse.GetCnt(), end-start)
+		}
+		written += int(writeResponse.Cnt)
 	}
 
-	return len(entries), totalReadTime, totalWriteTime, nil
+	return written, totalReadTime, totalWriteTime, nil
 }
-
-/*
-Stage 3 optimized migration reference (batch RPC version)
-
-Keep these blocks commented while the sequential baseline is active. To restore
-batch migration, re-enable ReadFiles/WriteFiles in storageRPCClient and replace
-the ListFiles + migrateFilesSequential sections in AddNode and RemoveNode with
-the corresponding blocks below.
-
-AddNode batch read/filter/write:
-
-	batchReadRes, err := srcClient.ReadFiles(ctx, &proto.BatchReadRequest{})
-	if err != nil {
-		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("read files from source node %s: %w", peerAddr, err)
-	}
-	if batchReadRes == nil {
-		return &proto.AddNodeResponse{MigratedFileCount: 0}, fmt.Errorf("source node %s returned an empty response", peerAddr)
-	}
-	fmt.Printf("Number of files in Node %v: %v\n", peerAddr, len(batchReadRes.Entries))
-
-	batchWriteRequest := &proto.BatchWriteRequest{
-		Entries: make([]*proto.FileEntry, 0),
-	}
-	for _, entry := range batchReadRes.Entries {
-		filePath := entry.VideoId + "/" + entry.Filename
-		target := findStorageAddr(filePath, proposedIDs, proposedServers)
-		if target == req.NodeAddress {
-			batchWriteRequest.Entries = append(batchWriteRequest.Entries, &proto.FileEntry{
-				VideoId:  entry.VideoId,
-				Filename: entry.Filename,
-				Data:     entry.Data,
-			})
-		}
-	}
-
-	count := len(batchWriteRequest.Entries)
-	start := time.Now()
-	if count > 0 {
-		writeResponse, err := destClient.WriteFiles(ctx, batchWriteRequest)
-		if err != nil {
-			log.Printf("Failed to send files: %v\n", err)
-			return &proto.AddNodeResponse{MigratedFileCount: 0}, err
-		}
-		if writeResponse == nil || writeResponse.Cnt != uint32(count) {
-			var written uint32
-			if writeResponse != nil {
-				written = writeResponse.Cnt
-			}
-			return &proto.AddNodeResponse{MigratedFileCount: int32(written)}, fmt.Errorf(
-				"destination wrote %d of %d files", written, count,
-			)
-		}
-	}
-
-RemoveNode batch read/write:
-
-	response, err := srcClient.ReadFiles(ctx, &proto.BatchReadRequest{})
-	if err != nil {
-		log.Printf("ReadFiles RPC failed: %v\n", err)
-		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
-	}
-	if response == nil {
-		return &proto.RemoveNodeResponse{MigratedFileCount: 0}, errors.New("source node returned an empty response")
-	}
-	fmt.Printf("Number of files: %v\n", len(response.Entries))
-
-	batchWriteRequest := &proto.BatchWriteRequest{Entries: response.Entries}
-	start := time.Now()
-	if len(response.Entries) > 0 {
-		writeResponse, err := dstClient.WriteFiles(ctx, batchWriteRequest)
-		if err != nil {
-			log.Printf("Failed to send files: %v\n", err)
-			return &proto.RemoveNodeResponse{MigratedFileCount: 0}, err
-		}
-		if writeResponse == nil || writeResponse.Cnt != uint32(len(response.Entries)) {
-			var written uint32
-			if writeResponse != nil {
-				written = writeResponse.Cnt
-			}
-			return &proto.RemoveNodeResponse{MigratedFileCount: int32(written)}, fmt.Errorf(
-				"destination wrote %d of %d files", written, len(response.Entries),
-			)
-		}
-	}
-*/
 
 func findStorageAddr(key string, storageIDs []uint64, storageServers map[uint64]string) string {
 	if len(storageIDs) == 0 {

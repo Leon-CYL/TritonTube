@@ -1,5 +1,3 @@
-// Lab 7, 8, 9: Use these templates to render the web pages
-
 package web
 
 const indexHTML = `

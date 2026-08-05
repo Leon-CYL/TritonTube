@@ -1,5 +1,3 @@
-// Lab 9: Implement a distributed video metadata service
-
 package web
 
 import (
