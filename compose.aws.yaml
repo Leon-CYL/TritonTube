@@ -1,0 +1,135 @@
+name: tritontube-aws
+
+# Run this same file on every EC2 instance, selecting exactly one profile:
+#   web, node1, node2, or node3
+# All addresses below are EC2 private IPv4 addresses supplied through .env.aws.
+
+x-etcd-common: &etcd-common
+  image: quay.io/coreos/etcd:v3.6.0
+  network_mode: host
+  restart: unless-stopped
+  healthcheck:
+    test:
+      - CMD
+      - /usr/local/bin/etcdctl
+      - endpoint
+      - health
+      - --endpoints=http://127.0.0.1:2379
+    interval: 5s
+    timeout: 5s
+    retries: 12
+    start_period: 10s
+
+x-storage-common: &storage-common
+  build:
+    context: .
+    dockerfile: Dockerfile.storage
+  image: tritontube-storage:stage4
+  network_mode: host
+  restart: unless-stopped
+  command:
+    - --host
+    - 0.0.0.0
+    - --port
+    - "8090"
+    - /var/lib/tritontube
+
+services:
+  etcd1:
+    <<: *etcd-common
+    profiles: [node1]
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd1
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://${ETCD1_IP:?set ETCD1_IP in .env.aws}:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://${ETCD1_IP}:2380
+      - --initial-cluster=etcd1=http://${ETCD1_IP}:2380,etcd2=http://${ETCD2_IP:?set ETCD2_IP in .env.aws}:2380,etcd3=http://${ETCD3_IP:?set ETCD3_IP in .env.aws}:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=tritontube-stage4
+    volumes:
+      - etcd-data:/etcd-data
+
+  storage1:
+    <<: *storage-common
+    profiles: [node1]
+    volumes:
+      - storage-data:/var/lib/tritontube
+
+  etcd2:
+    <<: *etcd-common
+    profiles: [node2]
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd2
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://${ETCD2_IP:?set ETCD2_IP in .env.aws}:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://${ETCD2_IP}:2380
+      - --initial-cluster=etcd1=http://${ETCD1_IP:?set ETCD1_IP in .env.aws}:2380,etcd2=http://${ETCD2_IP}:2380,etcd3=http://${ETCD3_IP:?set ETCD3_IP in .env.aws}:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=tritontube-stage4
+    volumes:
+      - etcd-data:/etcd-data
+
+  storage2:
+    <<: *storage-common
+    profiles: [node2]
+    volumes:
+      - storage-data:/var/lib/tritontube
+
+  etcd3:
+    <<: *etcd-common
+    profiles: [node3]
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd3
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://${ETCD3_IP:?set ETCD3_IP in .env.aws}:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://${ETCD3_IP}:2380
+      - --initial-cluster=etcd1=http://${ETCD1_IP:?set ETCD1_IP in .env.aws}:2380,etcd2=http://${ETCD2_IP:?set ETCD2_IP in .env.aws}:2380,etcd3=http://${ETCD3_IP}:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=tritontube-stage4
+    volumes:
+      - etcd-data:/etcd-data
+
+  storage3:
+    <<: *storage-common
+    profiles: [node3]
+    volumes:
+      - storage-data:/var/lib/tritontube
+
+  web:
+    profiles: [web]
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: tritontube-web:stage4
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - etcd
+      - ${ETCD1_IP:?set ETCD1_IP in .env.aws}:2379,${ETCD2_IP:?set ETCD2_IP in .env.aws}:2379,${ETCD3_IP:?set ETCD3_IP in .env.aws}:2379
+      - nw
+      - 0.0.0.0:3343,${ETCD1_IP}:8090,${ETCD2_IP}:8090,${ETCD3_IP}:8090
+
+  admin:
+    profiles: [admin]
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    image: tritontube-admin:stage4
+    network_mode: host
+
+volumes:
+  etcd-data:
+  storage-data:

@@ -1,4 +1,5 @@
 .DS_Store
+.env.aws
 data/source/
 data/benchmark/
 benchmarks/results/
