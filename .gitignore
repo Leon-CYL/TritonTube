@@ -1,5 +1,3 @@
 .DS_Store
-data/source/
-data/benchmark/
 benchmarks/results/
 tools/wrk2
