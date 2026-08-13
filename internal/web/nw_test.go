@@ -241,6 +241,7 @@ func percentage(part, total int) float64 {
 }
 
 type fakeStorageRPCClient struct {
+	mu            sync.Mutex
 	readResponse  *proto.BatchReadResponse
 	readErr       error
 	writeResponse *proto.BatchWriteResponse
@@ -301,6 +302,8 @@ func (client *fakeStorageRPCClient) WriteFile(
 	request *proto.WriteRequest,
 	_ ...grpc.CallOption,
 ) (*proto.WriteResponse, error) {
+	client.mu.Lock()
+	defer client.mu.Unlock()
 	client.writeRequests = append(client.writeRequests, &proto.BatchWriteRequest{Entries: []*proto.FileEntry{{
 		VideoId: request.VideoId, Filename: request.Filename, Data: request.Data,
 	}}})
@@ -318,6 +321,8 @@ func (client *fakeStorageRPCClient) WriteFiles(
 	request *proto.BatchWriteRequest,
 	_ ...grpc.CallOption,
 ) (*proto.BatchWriteResponse, error) {
+	client.mu.Lock()
+	defer client.mu.Unlock()
 	client.writeRequests = append(client.writeRequests, request)
 	if client.writeResponse != nil || client.writeErr != nil {
 		return client.writeResponse, client.writeErr

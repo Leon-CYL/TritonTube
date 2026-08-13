@@ -11,9 +11,11 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 	"tritontube/internal/proto"
 	"tritontube/internal/web"
 
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 )
 
@@ -90,10 +92,10 @@ func run() error {
 			return errors.New("content options require one admin address and at least one storage node")
 		}
 
-		contentService = web.NewNetworkVideoContentService(nodes[1:])
+		networkService := web.NewNetworkVideoContentService(nodes[1:])
 
 		grpcServer = grpc.NewServer()
-		proto.RegisterVideoContentAdminServiceServer(grpcServer, contentService.(*web.NetworkVideoContentService))
+		proto.RegisterVideoContentAdminServiceServer(grpcServer, networkService)
 
 		lis, err := net.Listen("tcp", nodes[0])
 		if err != nil {
@@ -107,6 +109,22 @@ func run() error {
 				fmt.Fprintln(os.Stderr, "admin gRPC server:", err)
 			}
 		}()
+
+		contentService = networkService
+		if os.Getenv("REDIS_CACHE_ENABLED") != "false" {
+			redisAddr := os.Getenv("REDIS_ADDR")
+			if redisAddr == "" {
+				redisAddr = "localhost:6379"
+			}
+			redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
+			defer redisClient.Close()
+
+			contentService = web.NewCachedContentService(
+				networkService,
+				redisClient,
+				10*time.Minute,
+			)
+		}
 
 	default:
 		return fmt.Errorf("unknown content service type %q; supported: nw", contentServiceType)

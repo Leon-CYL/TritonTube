@@ -367,6 +367,9 @@ func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
 	videoId := "unknown"
 	filename := "unknown"
 	defer func() {
+		if !contentReadLoggingEnabled() {
+			return
+		}
 		log.Printf(
 			"Content request total time: video=%s file=%s duration=%.3f ms",
 			videoId,
@@ -383,7 +386,9 @@ func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
 	}
 	videoId = parts[0]
 	filename = parts[1]
-	log.Println("Video ID:", videoId, "Filename:", filename)
+	if contentReadLoggingEnabled() {
+		log.Println("Video ID:", videoId, "Filename:", filename)
+	}
 
 	content, err := s.contentService.Read(videoId, filename)
 
@@ -415,5 +420,11 @@ func (s *server) handleVideoContent(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error writing response: %v", err)
 	}
 	httpTime := time.Since(start)
-	log.Printf("HTTP write time: %.3f ms", durationMilliseconds(httpTime))
+	if contentReadLoggingEnabled() {
+		log.Printf("HTTP write time: %.3f ms", durationMilliseconds(httpTime))
+	}
+}
+
+func contentReadLoggingEnabled() bool {
+	return os.Getenv("QUIET_CONTENT_READ_LOGS") != "true"
 }

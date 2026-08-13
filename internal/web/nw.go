@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 	"tritontube/internal/proto"
@@ -62,6 +64,15 @@ func NewNetworkVideoContentService(storageServers []string) *NetworkVideoContent
 	}
 }
 
+func configuredMigrationWorkers() int {
+	const defaultWorkers = 8
+	value, err := strconv.Atoi(os.Getenv("MIGRATION_WORKERS"))
+	if err != nil || value < 1 {
+		return defaultWorkers
+	}
+	return value
+}
+
 func HashStringToUint64(key string) uint64 {
 	sum := sha256.Sum256([]byte(key))
 	return binary.BigEndian.Uint64(sum[:8])
@@ -83,7 +94,9 @@ func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]b
 		return nil, fmt.Errorf("no valid storage address found for %s", filepath)
 	}
 	hashLookupTime := time.Since(start)
-	log.Printf("Consistent hash lookup time: %.3f ms", durationMilliseconds(hashLookupTime))
+	if contentReadLoggingEnabled() {
+		log.Printf("Consistent hash lookup time: %.3f ms", durationMilliseconds(hashLookupTime))
+	}
 
 	conn, err := grpc.NewClient(
 		storageAddr,
@@ -109,7 +122,9 @@ func (ns *NetworkVideoContentService) Read(videoId string, filename string) ([]b
 		return nil, err
 	}
 	grpcTime := time.Since(start)
-	log.Printf("gRPC read file time: %.3f ms", durationMilliseconds(grpcTime))
+	if contentReadLoggingEnabled() {
+		log.Printf("gRPC read file time: %.3f ms", durationMilliseconds(grpcTime))
+	}
 
 	return response.Data, nil
 }
@@ -367,40 +382,100 @@ func migrateFilesBatch(
 	destination storageRPCClient,
 	entries []*proto.FileEntry,
 ) (int, time.Duration, time.Duration, error) {
-	var totalReadTime time.Duration
-	var totalWriteTime time.Duration
-	written := 0
-
-	for start := 0; start < len(entries); start += storageBatchSize {
-		end := min(start+storageBatchSize, len(entries))
-		requests := make([]*proto.ReadRequest, 0, end-start)
-		for _, entry := range entries[start:end] {
-			requests = append(requests, &proto.ReadRequest{VideoId: entry.VideoId, Filename: entry.Filename})
-		}
-
-		readStart := time.Now()
-		readResponse, err := source.ReadFiles(ctx, &proto.BatchReadRequest{Requests: requests})
-		totalReadTime += time.Since(readStart)
-		if err != nil {
-			return written, totalReadTime, totalWriteTime, fmt.Errorf("read batch starting at file %d: %w", start, err)
-		}
-		if readResponse == nil || len(readResponse.Entries) != end-start {
-			return written, totalReadTime, totalWriteTime, fmt.Errorf("read batch returned %d of %d files", len(readResponse.GetEntries()), end-start)
-		}
-
-		writeStart := time.Now()
-		writeResponse, err := destination.WriteFiles(ctx, &proto.BatchWriteRequest{Entries: readResponse.Entries})
-		totalWriteTime += time.Since(writeStart)
-		if err != nil {
-			return written, totalReadTime, totalWriteTime, fmt.Errorf("write batch starting at file %d: %w", start, err)
-		}
-		if writeResponse == nil || writeResponse.Cnt != uint32(end-start) {
-			return written, totalReadTime, totalWriteTime, fmt.Errorf("write batch wrote %d of %d files", writeResponse.GetCnt(), end-start)
-		}
-		written += int(writeResponse.Cnt)
+	type migrationBatch struct {
+		start    int
+		requests []*proto.ReadRequest
+	}
+	type migrationResult struct {
+		written   int
+		readTime  time.Duration
+		writeTime time.Duration
+		err       error
 	}
 
-	return written, totalReadTime, totalWriteTime, nil
+	workerCount := configuredMigrationWorkers()
+	batchCount := (len(entries) + storageBatchSize - 1) / storageBatchSize
+	workerCount = min(workerCount, batchCount)
+	if workerCount == 0 {
+		return 0, 0, 0, nil
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	jobs := make(chan migrationBatch)
+	results := make(chan migrationResult, batchCount)
+	var workers sync.WaitGroup
+
+	for range workerCount {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for batch := range jobs {
+				readStart := time.Now()
+				readResponse, err := source.ReadFiles(ctx, &proto.BatchReadRequest{Requests: batch.requests})
+				readTime := time.Since(readStart)
+				if err != nil {
+					results <- migrationResult{readTime: readTime, err: fmt.Errorf("read batch starting at file %d: %w", batch.start, err)}
+					cancel()
+					continue
+				}
+				if readResponse == nil || len(readResponse.Entries) != len(batch.requests) {
+					results <- migrationResult{readTime: readTime, err: fmt.Errorf("read batch starting at file %d returned %d of %d files", batch.start, len(readResponse.GetEntries()), len(batch.requests))}
+					cancel()
+					continue
+				}
+
+				writeStart := time.Now()
+				writeResponse, err := destination.WriteFiles(ctx, &proto.BatchWriteRequest{Entries: readResponse.Entries})
+				writeTime := time.Since(writeStart)
+				if err != nil {
+					results <- migrationResult{readTime: readTime, writeTime: writeTime, err: fmt.Errorf("write batch starting at file %d: %w", batch.start, err)}
+					cancel()
+					continue
+				}
+				if writeResponse == nil || writeResponse.Cnt != uint32(len(batch.requests)) {
+					results <- migrationResult{readTime: readTime, writeTime: writeTime, err: fmt.Errorf("write batch starting at file %d wrote %d of %d files", batch.start, writeResponse.GetCnt(), len(batch.requests))}
+					cancel()
+					continue
+				}
+				results <- migrationResult{written: int(writeResponse.Cnt), readTime: readTime, writeTime: writeTime}
+			}
+		}()
+	}
+
+	go func() {
+		defer close(jobs)
+		for start := 0; start < len(entries); start += storageBatchSize {
+			end := min(start+storageBatchSize, len(entries))
+			requests := make([]*proto.ReadRequest, 0, end-start)
+			for _, entry := range entries[start:end] {
+				requests = append(requests, &proto.ReadRequest{VideoId: entry.VideoId, Filename: entry.Filename})
+			}
+			select {
+			case jobs <- migrationBatch{start: start, requests: requests}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	go func() {
+		workers.Wait()
+		close(results)
+	}()
+
+	var written int
+	var totalReadTime, totalWriteTime time.Duration
+	var firstErr error
+	for result := range results {
+		written += result.written
+		totalReadTime += result.readTime
+		totalWriteTime += result.writeTime
+		if firstErr == nil && result.err != nil {
+			firstErr = result.err
+		}
+	}
+	return written, totalReadTime, totalWriteTime, firstErr
 }
 
 func findStorageAddr(key string, storageIDs []uint64, storageServers map[uint64]string) string {
