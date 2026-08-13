@@ -31,7 +31,7 @@ with the same concurrency before measurement.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Baseline | 1 | 66.67 | 14.08 ms | 35.91 ms | 0 | N/A |
 | Baseline | 10 | 93.62 | 101.31 ms | 252.85 ms | 0 | N/A |
-| Baseline | 50 | 86.65 | 520.19 ms | 1.01 s | 0 | N/A |
+| Baseline | 50 | 86.65 | 520.19 ms | 1010 ms | 0 | N/A |
 | Cold cache | 1 | 87.97 | 9.70 ms | 39.45 ms | 0 | 83.73% |
 | Cold cache | 10 | 110.43 | 86.74 ms | 186.40 ms | 0 | 88.62% |
 | Cold cache | 50 | 115.93 | 400.92 ms | 982.23 ms | 0 | 91.43% |
